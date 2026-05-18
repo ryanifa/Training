@@ -1,0 +1,2626 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trainingsoverzicht Ryan Douglas 2026</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-size: 14px; user-select: none; }
+
+.header { background: #1a1a2e; color: white; padding: 16px 20px; }
+.header h1 { font-size: 20px; font-weight: bold; margin-bottom: 4px; }
+.header .sub { font-size: 13px; opacity: 0.7; }
+
+.nav { display: flex; gap: 0; background: #16213e; border-bottom: 2px solid #0f3460; overflow-x: auto; }
+.nav-btn { padding: 10px 18px; font-size: 13px; font-weight: bold; cursor: pointer; color: #aaa; border: none; background: transparent; white-space: nowrap; border-bottom: 3px solid transparent; }
+.nav-btn:hover { color: white; }
+.nav-btn.active { color: white; border-bottom-color: #4fc3f7; }
+
+.content { padding: 16px; max-width: 1100px; margin: 0 auto; }
+.page { display: none; }
+.page.active { display: block; }
+
+/* DRAG & DROP WEEK PLAN */
+.week-selector { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; max-height: 180px; overflow-y: auto; padding: 4px; }
+.week-btn { padding: 6px 12px; border-radius: 20px; border: 1px solid #ddd; background: white; cursor: pointer; font-size: 11px; color: #666; white-space: nowrap; }
+.week-btn:hover { background: #f0f0f0; }
+.week-btn.active { background: #0f3460; color: white; border-color: #0f3460; }
+.week-btn.deload { border-style: dashed; }
+.week-btn.race-a { border-color: #D85A30; color: #993C1D; font-weight: bold; }
+.week-btn.race-a.active { background: #D85A30; color: white; border-color: #D85A30; }
+
+.week-info { background: white; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.week-info-title { font-weight: bold; font-size: 14px; }
+.week-info-phase { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: .05em; }
+.week-info-tags { display: flex; gap: 6px; }
+.week-tag { font-size: 10px; padding: 3px 8px; border-radius: 10px; font-weight: bold; }
+.tag-deload { background: #E1F5EE; color: #0F6E56; }
+.tag-race { background: #FAECE7; color: #993C1D; }
+.tag-taper { background: #EEEDFE; color: #534AB7; }
+.tag-build { background: #FAEEDA; color: #854F0B; }
+.tag-base { background: #E6F1FB; color: #185FA5; }
+.tag-peak { background: #FAC775; color: #633806; }
+.tag-recovery { background: #F1EFE8; color: #5F5E5A; }
+
+.week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 16px; }
+.day-col { background: white; border-radius: 8px; min-height: 120px; border: 2px solid #eee; transition: border-color 0.15s; }
+.day-col.drag-over { border-color: #4fc3f7; background: #f0f9ff; }
+.day-col-header { padding: 8px; text-align: center; border-bottom: 1px solid #eee; background: #f8f8f8; border-radius: 6px 6px 0 0; }
+.day-col-name { font-size: 12px; font-weight: bold; color: #333; }
+.day-col-date { font-size: 11px; color: #888; }
+.day-col-body { padding: 6px; min-height: 80px; }
+
+/* RESPONSIVE: tablet — 7 dagen in 2 rijen (4+3) */
+@media (max-width: 900px) {
+  .content { padding: 12px; }
+  .week-grid { grid-template-columns: repeat(4, 1fr); }
+  .day-col { min-height: 100px; }
+  .zones-grid { grid-template-columns: 1fr; }
+}
+
+/* RESPONSIVE: mobiel — dagen onder elkaar */
+@media (max-width: 600px) {
+  body { font-size: 13px; }
+  .header { padding: 12px 14px; }
+  .header h1 { font-size: 17px; }
+  .header .sub { font-size: 11px; }
+  .nav-btn { padding: 9px 12px; font-size: 12px; }
+  .content { padding: 10px; }
+  .week-grid { grid-template-columns: 1fr; gap: 6px; }
+  .day-col { min-height: auto; }
+  .day-col-header { padding: 6px 10px; text-align: left; display: flex; justify-content: space-between; align-items: center; border-radius: 6px 6px 0 0; }
+  .day-col-name { font-size: 13px; }
+  .day-col-date { font-size: 12px; }
+  .day-col-body { padding: 6px 8px; min-height: 30px; }
+  .empty-day { padding: 6px 0; }
+  .session-pill { padding: 8px 10px; font-size: 13px; }
+  .pill-name { font-size: 13px; }
+  .pill-meta { font-size: 12px; }
+  .week-nav { gap: 4px; }
+  .week-nav-btn { font-size: 12px; padding: 8px 6px; }
+  .detail-panel { padding: 12px; }
+  .detail-title { font-size: 15px; }
+  .step { padding: 8px 10px; }
+  .step-name { font-size: 13px; }
+  .step-metric { font-size: 12px; }
+  .modal-box { max-width: 100%; max-height: 95vh; border-radius: 12px 12px 0 0; }
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .metrics-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 8px; }
+  .event-card { flex-wrap: wrap; padding: 10px 12px; }
+  .event-date { width: auto; }
+  .event-name { font-size: 13px; }
+  .event-detail { font-size: 11px; }
+}
+
+.session-pill {
+  border-radius: 6px; padding: 6px 8px; margin-bottom: 5px; cursor: grab;
+  border-left: 3px solid; font-size: 12px; transition: opacity 0.15s, transform 0.15s;
+  position: relative;
+}
+.session-pill:active { cursor: grabbing; opacity: 0.7; transform: scale(0.97); }
+.session-pill.dragging { opacity: 0.4; }
+.session-pill.done { opacity: 0.55; }
+.session-pill.missed { opacity: 0.5; background: #f0f0f0 !important; border-color: #999 !important; color: #777 !important; }
+.session-pill.missed .pill-name { text-decoration: line-through; color: #777; }
+.session-pill.missed .pill-meta { text-decoration: line-through; color: #999; }
+.pill-name { font-weight: bold; margin-bottom: 2px; }
+.pill-meta { font-size: 11px; opacity: 0.8; }
+.pill-done { position: absolute; top: 4px; right: 6px; font-size: 13px; }
+.pill-missed { position: absolute; top: 4px; right: 6px; font-size: 13px; }
+
+.p-swim { background: #E1F5EE; border-color: #1D9E75; color: #0F6E56; }
+.p-bike { background: #E6F1FB; border-color: #378ADD; color: #185FA5; }
+.p-run  { background: #FAEEDA; border-color: #EF9F27; color: #854F0B; }
+.p-str  { background: #EEEDFE; border-color: #7F77DD; color: #534AB7; }
+.p-event{ background: #FAC775; border-color: #BA7517; color: #633806; }
+.p-race { background: #FAECE7; border-color: #D85A30; color: #993C1D; font-weight: bold; }
+.p-rest { background: #F1EFE8; border-color: #B4B2A9; color: #5F5E5A; }
+
+/* Detail panel */
+.detail-panel { background: white; border-radius: 8px; padding: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 0; border: 1px solid #ddd; }
+.detail-title { font-size: 16px; font-weight: bold; margin-bottom: 4px; }
+.detail-sub { font-size: 13px; color: #888; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
+.step { border-radius: 6px; padding: 7px 10px; margin-bottom: 4px; }
+.step-row { display: flex; justify-content: space-between; align-items: baseline; }
+.step-name { font-size: 13px; font-weight: bold; }
+.step-dur { font-size: 12px; color: #888; }
+.step-metric { font-size: 12px; font-weight: bold; margin: 2px 0; }
+.step-note { font-size: 11px; color: #666; }
+.sess-lbl { font-size: 11px; font-weight: bold; color: #888; text-transform: uppercase; letter-spacing: .05em; margin: 10px 0 5px; }
+.divider-line { height: 1px; background: #eee; margin: 8px 0; }
+.sz1{background:#F1EFE8}.sz1 .step-name{color:#2C2C2A}.sz1 .step-metric{color:#5F5E5A}
+.sz2{background:#E1F5EE}.sz2 .step-name{color:#0F6E56}.sz2 .step-metric{color:#1D9E75}
+.sz3{background:#E6F1FB}.sz3 .step-name{color:#185FA5}.sz3 .step-metric{color:#378ADD}
+.sz4{background:#FAEEDA}.sz4 .step-name{color:#854F0B}.sz4 .step-metric{color:#BA7517}
+.sz5{background:#FAECE7}.sz5 .step-name{color:#993C1D}.sz5 .step-metric{color:#D85A30}
+
+.empty-day { color: #ccc; font-size: 12px; text-align: center; padding: 16px 0; }
+
+.hint { font-size: 12px; color: #888; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.hint-icon { font-size: 16px; }
+
+.mark-done-btn { font-size: 11px; padding: 4px 10px; border-radius: 10px; border: 1px solid #ddd; background: white; cursor: pointer; margin-top: 8px; margin-right: 6px; }
+.mark-done-btn:hover { background: #f0f0f0; }
+.move-btn { font-size: 11px; padding: 4px 10px; border-radius: 10px; border: 1px solid #4fc3f7; background: white; color: #0f3460; cursor: pointer; margin-top: 8px; margin-right: 6px; }
+.move-btn:hover { background: #e3f2fd; }
+.move-btn.active { background: #4fc3f7; color: white; }
+
+.move-hint { background: #fff3cd; color: #856404; border-left: 3px solid #ffc107; padding: 8px 12px; font-size: 12px; margin-bottom: 10px; border-radius: 0 6px 6px 0; display: flex; justify-content: space-between; align-items: center; }
+.move-cancel { padding: 3px 10px; border: 1px solid #856404; background: white; color: #856404; border-radius: 10px; font-size: 11px; cursor: pointer; }
+
+.day-col.move-target { border-color: #ffc107; background: #fffbe6; cursor: pointer; }
+.day-col.move-target:hover { background: #fff3cd; }
+.session-pill.moving { outline: 2px solid #ffc107; outline-offset: 1px; }
+
+.pill-fb { position: absolute; top: 4px; right: 22px; font-size: 11px; }
+
+.feedback-display {
+  background: #FAFAFE; border: 1px solid #E5E2F5; border-left: 3px solid #7F77DD;
+  border-radius: 6px; padding: 10px 12px; margin: 10px 0;
+  font-size: 13px; line-height: 1.5; color: #333;
+  white-space: pre-wrap; word-wrap: break-word;
+}
+.feedback-display-label {
+  font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: .03em;
+  color: #534AB7; margin-bottom: 6px;
+}
+
+.feedback-btn { font-size: 11px; padding: 4px 10px; border-radius: 10px; border: 1px solid #7F77DD; background: white; color: #534AB7; cursor: pointer; margin-top: 8px; margin-right: 6px; }
+.feedback-btn:hover { background: #EEEDFE; }
+.feedback-btn.has-feedback { background: #EEEDFE; font-weight: bold; }
+
+/* MODAL */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  display: none; align-items: center; justify-content: center;
+  z-index: 1000; padding: 16px;
+}
+.modal-overlay.active { display: flex; }
+.modal-box {
+  background: white; border-radius: 12px; width: 100%; max-width: 560px;
+  max-height: 90vh; display: flex; flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+.modal-header { padding: 14px 16px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: flex-start; }
+.modal-title { font-size: 15px; font-weight: bold; }
+.modal-sub { font-size: 12px; color: #888; margin-top: 2px; }
+.modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #888; line-height: 1; padding: 0 4px; }
+.modal-close:hover { color: #222; }
+.modal-body { padding: 14px 16px; overflow-y: auto; flex: 1; }
+.modal-textarea {
+  width: 100%; min-height: 220px; padding: 10px; border: 1px solid #ddd;
+  border-radius: 6px; font-family: Arial, sans-serif; font-size: 13px;
+  line-height: 1.5; resize: vertical; box-sizing: border-box;
+}
+.modal-textarea:focus { outline: 2px solid #7F77DD; border-color: #7F77DD; }
+.modal-meta { font-size: 11px; color: #888; margin-top: 6px; }
+
+.metrics-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 6px; margin: 10px 0; padding: 10px; background: #f8f8fa; border-radius: 6px;
+  border: 1px solid #eee;
+}
+.metric-cell { font-size: 11px; }
+.metric-label { color: #888; font-weight: bold; text-transform: uppercase; letter-spacing: .03em; font-size: 10px; }
+.metric-value { font-size: 14px; font-weight: bold; color: #0f3460; margin-top: 2px; }
+.metric-unit { font-size: 11px; font-weight: normal; color: #666; margin-left: 2px; }
+.modal-footer { padding: 10px 16px; border-top: 1px solid #eee; display: flex; justify-content: space-between; gap: 8px; }
+.modal-btn { padding: 7px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; border: 1px solid #ddd; background: white; }
+.modal-btn-primary { background: #0f3460; color: white; border-color: #0f3460; font-weight: bold; }
+.modal-btn-primary:hover { background: #16427a; }
+.modal-btn-danger { color: #d32f2f; border-color: #f5c6c6; }
+.modal-btn-danger:hover { background: #fef2f2; }
+
+.week-nav { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.week-nav-btn { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #ddd; background: white; cursor: pointer; font-size: 12px; }
+.week-nav-btn:hover { background: #f0f0f0; }
+.week-nav-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* SEASON */
+.season-grid { display: grid; gap: 8px; }
+.event-card { background: white; border-radius: 8px; padding: 12px 16px; border-left: 5px solid; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.event-date { font-size: 12px; color: #888; width: 80px; flex-shrink: 0; }
+.event-name { font-weight: bold; }
+.event-detail { font-size: 12px; color: #666; margin-top: 2px; }
+.event-badge { font-size: 11px; font-weight: bold; padding: 3px 10px; border-radius: 12px; flex-shrink: 0; }
+.badge-a { background: #FAECE7; color: #993C1D; border: 1px solid #D85A30; }
+.badge-b { background: #E6F1FB; color: #185FA5; border: 1px solid #378ADD; }
+.badge-c { background: #F1EFE8; color: #5F5E5A; border: 1px solid #B4B2A9; }
+.border-a { border-color: #D85A30; }
+.border-b { border-color: #378ADD; }
+.border-c { border-color: #B4B2A9; }
+.phase-title { font-size: 11px; font-weight: bold; color: #888; text-transform: uppercase; letter-spacing: .06em; margin: 16px 0 6px; }
+
+/* ZONES */
+.zones-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.zone-card { background: white; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.zone-card h3 { font-size: 14px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #eee; }
+.zone-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px; }
+.zone-row:last-child { border-bottom: none; }
+.zone-name { display: flex; align-items: center; gap: 6px; }
+.zone-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.zone-val { font-weight: bold; font-size: 13px; }
+
+/* GOALS */
+.goal-card { background: white; border-radius: 8px; padding: 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.goal-card h3 { font-size: 15px; font-weight: bold; margin-bottom: 10px; }
+.goal-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px; }
+.goal-row:last-child { border-bottom: none; }
+.goal-val { font-weight: bold; color: #0f3460; }
+.split-row { display: flex; gap: 0; margin-top: 10px; border-radius: 6px; overflow: hidden; }
+.split-seg { text-align: center; padding: 8px 4px; }
+.split-seg .seg-name { font-size: 10px; font-weight: bold; margin-bottom: 2px; }
+.split-seg .seg-time { font-size: 15px; font-weight: bold; }
+.split-seg .seg-detail { font-size: 10px; margin-top: 1px; opacity: 0.8; }
+
+/* STATUS */
+.note-box { border-radius: 0 6px 6px 0; padding: 8px 12px; font-size: 12px; line-height: 1.6; margin-bottom: 6px; border-left: 3px solid; }
+.note-good { background:#E1F5EE; color:#0F6E56; border-color:#1D9E75; }
+.note-warn { background:#FAEEDA; color:#854F0B; border-color:#EF9F27; }
+.note-info { background:#E6F1FB; color:#185FA5; border-color:#378ADD; }
+.status-card { background: white; border-radius: 8px; padding: 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+.week-group-label { font-size: 11px; font-weight: bold; color: #888; text-transform: uppercase; letter-spacing: .05em; width: 100%; margin: 6px 0 2px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Trainingsoverzicht — Ryan Douglas</h1>
+  <div class="sub">Seizoen 2026 · 70.3 Luxemburg 11 jul · IJsselmeer 30 aug · Zwarte Plasje 13 sep · Marathon 1 nov</div>
+</div>
+
+<div class="nav">
+  <button class="nav-btn active" onclick="showPage('week', this)">Weekplan</button>
+  <button class="nav-btn" onclick="showPage('seizoen', this)">Seizoen</button>
+  <button class="nav-btn" onclick="showPage('zones', this)">Zones</button>
+  <button class="nav-btn" onclick="showPage('doelen', this)">Doelen</button>
+  <button class="nav-btn" onclick="showPage('status', this)">Status</button>
+</div>
+
+<div class="content">
+
+<!-- WEEKPLAN -->
+<div id="week" class="page active">
+  <div class="week-nav">
+    <button class="week-nav-btn" id="prevWeekBtn" onclick="navWeek(-1)">← Vorige week</button>
+    <button class="week-nav-btn" onclick="goToCurrentWeek()">📍 Huidige week</button>
+    <button class="week-nav-btn" id="nextWeekBtn" onclick="navWeek(1)">Volgende week →</button>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
+    <button class="week-nav-btn" style="flex:0;font-size:11px;padding:5px 10px;background:#f8f8f8" onclick="cleanWeek()" title="Verwijdert oude verplaatsingen als de week niet meer met het plan klopt">🧹 Schoon week op</button>
+    <button class="week-nav-btn" style="flex:0;font-size:11px;padding:5px 10px;background:#EEEDFE;border-color:#7F77DD;color:#534AB7" onclick="openImport()">📥 Importeer trainingsanalyse</button>
+  </div>
+  <div class="week-info" id="weekInfo"></div>
+  <div class="hint"><span class="hint-icon">↔️</span> Sleep trainingen naar een andere dag om te verschuiven · Klik op een training voor details</div>
+  <div class="week-grid" id="weekGrid"></div>
+  <div class="detail-panel" id="detailPanel" style="display:none"></div>
+</div>
+
+<!-- SEIZOEN -->
+<div id="seizoen" class="page">
+  <div id="seasonContent"></div>
+</div>
+
+<!-- ZONES -->
+<div id="zones" class="page">
+  <div class="zones-grid">
+    <div class="zone-card"><h3>🏃 Lopen (HR + pace)</h3>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#9FE1CB"></div>Z1 herstel</div><div class="zone-val">117–133 · 5:50+/km</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#378ADD"></div>Z2 duur</div><div class="zone-val">134–150 · 5:15–5:35/km</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#7F77DD"></div>Z3 tempo</div><div class="zone-val">151–162 · 4:55–5:10/km</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#EF9F27"></div>Z4 drempel</div><div class="zone-val">163–173 · 4:35–4:45/km</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#D85A30"></div>Z5 VO2max</div><div class="zone-val">174–179 · 4:20–4:30/km</div></div>
+    </div>
+    <div class="zone-card"><h3>🚴 Fietsen (FTP 237W schatting)</h3>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#9FE1CB"></div>Z1 herstel</div><div class="zone-val">&lt;130W · HR &lt;120</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#378ADD"></div>Z2 duur</div><div class="zone-val">130–178W · HR 121–133</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#7F77DD"></div>Z3 tempo</div><div class="zone-val">178–213W · HR 134–142</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#EF9F27"></div>Z4 drempel</div><div class="zone-val">213–249W · HR 143–151</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#D85A30"></div>Z5 VO2max</div><div class="zone-val">249–284W · HR 152–164</div></div>
+    </div>
+    <div class="zone-card"><h3>🏊 Zwemmen baan</h3>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#9FE1CB"></div>Herstel/drill</div><div class="zone-val">2:05–2:15/100m · RPE 2–3</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#378ADD"></div>Z2 duur</div><div class="zone-val">1:50–2:00/100m · RPE 4–5</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#7F77DD"></div>Z3 tempo</div><div class="zone-val">1:38–1:48/100m · RPE 6–7</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#EF9F27"></div>Z4 drempel</div><div class="zone-val">1:28–1:37/100m · RPE 8</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#D85A30"></div>Z5 sprint</div><div class="zone-val">&lt;1:28/100m · RPE 9–10</div></div>
+    </div>
+    <div class="zone-card"><h3>🌊 Zwemmen open water</h3>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#9FE1CB"></div>Herstel</div><div class="zone-val">RPE 2–3 · HR ~120–133</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#378ADD"></div>Z2 duur</div><div class="zone-val">RPE 4–5 · HR ~134–150</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#7F77DD"></div>Z3 tempo</div><div class="zone-val">RPE 6–7 · HR ~151–162</div></div>
+      <div class="zone-row"><div class="zone-name"><div class="zone-dot" style="background:#EF9F27"></div>Z4</div><div class="zone-val">RPE 7–8 · HR ~163–173</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- DOELEN -->
+<div id="doelen" class="page">
+  <div class="goal-card">
+    <h3>🏊🚴🏃 70.3 Luxemburg — 11 juli 2026</h3>
+    <div class="split-row">
+      <div class="split-seg" style="flex:2;background:#E1F5EE;color:#0F6E56"><div class="seg-name">ZWEM 1,9 km</div><div class="seg-time">30–33</div><div class="seg-detail">1:35–1:45/100m · Z2</div></div>
+      <div class="split-seg" style="flex:0.5;background:#F1EFE8;color:#5F5E5A"><div class="seg-name">T1+T2</div><div class="seg-time">4</div><div class="seg-detail">&lt;4 min</div></div>
+      <div class="split-seg" style="flex:3;background:#E6F1FB;color:#185FA5"><div class="seg-name">FIETS 90 km</div><div class="seg-time">2:30–2:45</div><div class="seg-detail">178–213W · 90 rpm</div></div>
+      <div class="split-seg" style="flex:2.5;background:#FAEEDA;color:#854F0B"><div class="seg-name">LOOP 21,1 km</div><div class="seg-time">1:52–2:00</div><div class="seg-detail">5:20–5:41/km · Z3</div></div>
+    </div>
+    <div style="text-align:center;margin-top:10px;font-size:18px;font-weight:bold;color:#0f3460">Streefdoel: 4:55–5:15 · Vangnet: sub 5:30</div>
+  </div>
+  <div class="goal-card">
+    <h3>🌊 IJsselmeer 22 km — 30 augustus 2026</h3>
+    <div class="goal-row"><span>Doel</span><span class="goal-val">Finishen</span></div>
+    <div class="goal-row"><span>Strategie</span><span class="goal-val">Eerste 15 km Z2 · laatste 5 km mag Z3</span></div>
+    <div class="goal-row"><span>Voeding</span><span class="goal-val">Elke 45 min gel in wetsuit pocket</span></div>
+  </div>
+  <div class="goal-card">
+    <h3>🏊🚴🏃 Zwarte Plasje ¼ triathlon — 13 september 2026</h3>
+    <div class="split-row">
+      <div class="split-seg" style="flex:2;background:#E1F5EE;color:#0F6E56"><div class="seg-name">ZWEM 1 km</div><div class="seg-time">17–18</div><div class="seg-detail">1:35–1:45/100m · Z3/Z4</div></div>
+      <div class="split-seg" style="flex:0.5;background:#F1EFE8;color:#5F5E5A"><div class="seg-name">T1+T2</div><div class="seg-time">3</div><div class="seg-detail">&lt;3 min</div></div>
+      <div class="split-seg" style="flex:3;background:#E6F1FB;color:#185FA5"><div class="seg-name">FIETS 40 km</div><div class="seg-time">1:05</div><div class="seg-detail">213–249W · 90+ rpm</div></div>
+      <div class="split-seg" style="flex:2;background:#FAEEDA;color:#854F0B"><div class="seg-name">LOOP 10 km</div><div class="seg-time">48</div><div class="seg-detail">4:45/km · Z4</div></div>
+    </div>
+    <div style="text-align:center;margin-top:10px;font-size:18px;font-weight:bold;color:#0f3460">Streefdoel: 2:10–2:15 · Strategie: Z3/Z4 race-pace</div>
+  </div>
+  <div class="goal-card">
+    <h3>🏃 Herfstmarathon — 1 november 2026</h3>
+    <div class="goal-row"><span>Doel</span><span class="goal-val">Sub 3:30:00 · 4:58/km</span></div>
+    <div class="goal-row"><span>Eerste helft</span><span class="goal-val">1:46 (5:01/km)</span></div>
+    <div class="goal-row"><span>Tweede helft</span><span class="goal-val">1:44 (4:55/km)</span></div>
+    <div class="goal-row"><span>HR target</span><span class="goal-val">Z3/lage Z4 (151–168 bpm)</span></div>
+  </div>
+</div>
+
+<!-- STATUS -->
+<div id="status" class="page">
+  <div class="status-card" id="statusThisWeek"></div>
+  <div class="note-box note-warn"><strong>HRV-trend (30 apr):</strong> al 2+ weken oranje (ongebalanceerd), eind apr rood (laag) · systeem niet hersteld · check ochtendmeting elke dag · groen = opbouwen mag, oranje/rood = gas terug</div>
+  <div class="note-box note-warn"><strong>Onderrug (28 apr):</strong> klachten na King's Ride zo 26 apr (mogelijk versterkt door sjouwwerk vrijdag) · fysio ma 27 apr · deze week voorzichtig opbouwen · core-werk ipv zware deadlifts</div>
+  <div class="note-box note-info"><strong>Trainingsstatus apr:</strong> VO₂ loop ~49–50 (lichte daling), VO₂ fiets ~44 stabiel · Acute belasting in/onder optimaal bereik · status was paars/blauw/groen/geel, eind apr roze (rust)</div>
+  <div class="note-box note-warn"><strong>Brouwersdam 9 mei:</strong> beslismoment op di 5 mei · A=race normaal, B=Z2 variant, C=skip · check HRV + rug + trainingsstatus</div>
+  <div class="note-box note-warn"><strong>Cadans fiets:</strong> doel 90–93 rpm · was 80–81 rpm bij King's Ride voorbereiding</div>
+  <div class="note-box note-warn"><strong>Slagafstand zwem:</strong> doel 130+ cm · was 110 cm op ma 20 apr</div>
+  <div class="note-box note-warn"><strong>Drempelloop:</strong> di 21 apr — HR-pieken bleven Z3 (~155) ipv Z4 (163-173) · intervallen te kort · volgende keer 3 min strikt aftikken</div>
+  <div class="note-box note-info"><strong>FTP hertest:</strong> inplannen na Brouwersdam 9 mei · schatting nu 237W</div>
+  <div class="note-box note-good"><strong>Gewicht doel 70.3:</strong> 84–85 kg (nu 88,4 kg) · 0,3–0,5 kg/week</div>
+</div>
+
+</div>
+
+<!-- FEEDBACK MODAL -->
+<div class="modal-overlay" id="fbModal" onclick="onModalBgClick(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="fbTitle">Feedback</div>
+        <div class="modal-sub" id="fbSub"></div>
+      </div>
+      <button class="modal-close" onclick="closeFeedback()">×</button>
+    </div>
+    <div class="modal-body">
+      <textarea class="modal-textarea" id="fbText" placeholder="Plak hier de analyse van je training, of schrijf zelf een notitie…"></textarea>
+      <div class="modal-meta" id="fbMeta"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn modal-btn-danger" id="fbDelete" onclick="deleteFeedback()" style="display:none">Verwijderen</button>
+      <div style="flex:1"></div>
+      <button class="modal-btn" onclick="closeFeedback()">Annuleer</button>
+      <button class="modal-btn modal-btn-primary" onclick="saveFeedback()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT MODAL -->
+<div class="modal-overlay" id="importModal" onclick="onImportBgClick(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">📥 Importeer trainingsanalyse</div>
+        <div class="modal-sub">Plak het JSON-blok uit je trainingsanalyse-chat</div>
+      </div>
+      <button class="modal-close" onclick="closeImport()">×</button>
+    </div>
+    <div class="modal-body">
+      <textarea class="modal-textarea" id="importText" placeholder='{ "datum": "2026-04-30", "sessie_type": "swim_tech", "voltooid": true, "feedback": "...", "metrics": { ... } }' style="font-family:monospace;font-size:12px"></textarea>
+      <div class="modal-meta" id="importMeta">Tip: één object of een array van meerdere objecten kan beide</div>
+    </div>
+    <div class="modal-footer">
+      <div style="flex:1"></div>
+      <button class="modal-btn" onclick="closeImport()">Annuleer</button>
+      <button class="modal-btn modal-btn-primary" onclick="processImport()">Importeren</button>
+    </div>
+  </div>
+</div>
+
+<!-- MISMATCH MODAL -->
+<div class="modal-overlay" id="mismatchModal" style="z-index:1100">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">⚠️ Sessie wijkt af van plan</div>
+        <div class="modal-sub" id="mismatchSub"></div>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div id="mismatchBody" style="font-size:13px;line-height:1.6"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn" onclick="resolveMismatch(false)">Sla deze over</button>
+      <div style="flex:1"></div>
+      <button class="modal-btn modal-btn-primary" onclick="resolveMismatch(true)">Vervang in plan</button>
+    </div>
+  </div>
+</div>
+
+<!-- WORKOUT EXPORT MODAL -->
+<div class="modal-overlay" id="workoutModal" onclick="onWorkoutBgClick(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">🏃 Garmin workout export</div>
+        <div class="modal-sub" id="workoutSub"></div>
+      </div>
+      <button class="modal-close" onclick="closeWorkout()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:11px;font-weight:bold;color:#888;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px">📋 Tekst (kopieer naar Garmin Connect handmatig)</div>
+      <textarea class="modal-textarea" id="workoutText" readonly style="font-family:monospace;font-size:12px;min-height:200px"></textarea>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <button class="modal-btn" onclick="copyWorkoutText()" style="background:#EEEDFE;border-color:#7F77DD;color:#534AB7">📋 Kopieer tekst</button>
+        <button class="modal-btn" onclick="downloadWorkoutFit()" style="background:#FAEEDA;border-color:#EF9F27;color:#854F0B">⚡ Download .FIT (experimenteel)</button>
+      </div>
+      <div class="modal-meta" style="margin-top:10px"><strong>Tip:</strong> Open Garmin Connect → Trainingen → Maak training aan → Hardlopen, en gebruik de tekst hierboven als referentie. De .FIT-export is experimenteel en kan door Garmin geweigerd worden.</div>
+      <div class="modal-meta" id="workoutMsg" style="margin-top:6px"></div>
+    </div>
+    <div class="modal-footer">
+      <div style="flex:1"></div>
+      <button class="modal-btn" onclick="closeWorkout()">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// SESSIONS LIBRARY
+// Sessies hergebruiken, per week varieer ik duur/intensiteit via modifiers
+// ============================================================
+const SESSIONS = {
+  // ZWEMMEN
+  swim_tech: {
+    type:'swim', label:'Zwem techniek', dur:'±50 min',
+    title:'Zwemmen — techniek & sighting',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Inzwemmen',d:'200m',m:'2:05–2:15/100m · RPE 2–3',note:''},
+      {z:'sz2',n:'DPS drills',d:'400m',m:'2:05–2:15/100m · RPE 3',note:'Bijleggen 4×50m + vingersleep 4×50m · tel slagen'},
+      {z:'sz3',n:'Sighting-intervallen',d:'5×200m',m:'1:38–1:48/100m · RPE 6–7',note:'75 sec rust · elke 6 slagen hoofd omhoog'},
+      {z:'sz2',n:'Duurzwem',d:'400m',m:'1:50–2:00/100m · RPE 4–5',note:'Slaglengte bewaken'},
+      {z:'sz1',n:'Uitzwemmen',d:'200m',m:'2:05–2:15/100m · RPE 1–2',note:''},
+    ]}]
+  },
+  swim_dur: {
+    type:'swim', label:'Zwem duur', dur:'±40 min',
+    title:'Zwemmen — uithoudingsvermogen',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Drills',d:'400m',m:'2:05–2:15/100m · RPE 3',note:'Bijleggen 4×50m + vingersleep 4×50m · tel slagen'},
+      {z:'sz2',n:'3× 400m duursets',d:'3× 400m',m:'1:50–2:00/100m · RPE 5–6',note:'60 sec rust'},
+      {z:'sz1',n:'Uitzwemmen',d:'200m',m:'2:05–2:15/100m · RPE 1–2',note:''},
+    ]}]
+  },
+  swim_long: {
+    type:'swim', label:'Zwem lang', dur:'±75 min',
+    title:'Zwemmen — lang volume (IJsselmeer prep)',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Inzwemmen',d:'400m',m:'2:05–2:15/100m · RPE 3',note:''},
+      {z:'sz2',n:'Hoofdset',d:'3×1000m',m:'1:50–2:00/100m · RPE 4–5',note:'90 sec rust · slaglengte bewaken'},
+      {z:'sz2',n:'Sighting oefening',d:'400m',m:'1:50–2:00/100m',note:'Elke 8 slagen sighten'},
+      {z:'sz1',n:'Uitzwemmen',d:'200m',m:'2:05–2:15/100m · RPE 1–2',note:''},
+    ]}]
+  },
+  swim_ow: {
+    type:'swim', label:'OW zwem', dur:'±45 min',
+    title:'Zwemmen — open water',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Inzwemmen OW',d:'200m',m:'RPE 2–3',note:'Gewenning aan temperatuur'},
+      {z:'sz2',n:'OW duurzwem',d:'1500m',m:'RPE 4–5 · HR ~134–150',note:'Sighting elke 8–10 slagen'},
+      {z:'sz1',n:'Uitzwemmen',d:'200m',m:'RPE 1–2',note:''},
+    ]}]
+  },
+  swim_ow_legs: {
+    type:'swim', label:'OW zwem zoomers', dur:'±45 min',
+    title:'Zwemmen — open water met zoomers (beengebruik)',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Inzwemmen OW',d:'200m',m:'RPE 2–3',note:'Zonder zoomers · gewenning'},
+      {z:'sz2',n:'Zoomers aan · beengevoel',d:'300m',m:'RPE 3–4',note:'Focus op beengebruik · 6-beat kick · niet op armen, op flow'},
+      {z:'sz2',n:'OW duurzwem met zoomers',d:'1200m',m:'RPE 4–5 · HR ~134–150',note:'Benen actief houden · sighting elke 8–10 slagen · slaglengte > slagtempo'},
+      {z:'sz2',n:'Zoomers uit · transfer',d:'200m',m:'RPE 4',note:'Probeer beengevoel mee te nemen zonder zoomers'},
+      {z:'sz1',n:'Uitzwemmen',d:'200m',m:'RPE 1–2',note:''},
+    ]}]
+  },
+  swim_ow_long: {
+    type:'swim', label:'OW zwem lang', dur:'±90 min',
+    title:'Zwemmen — open water lang',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Inzwemmen OW',d:'400m',m:'RPE 2–3',note:'Gewenning aan temperatuur'},
+      {z:'sz2',n:'OW duurzwem',d:'3000m',m:'RPE 4–5 · HR ~134–150',note:'Elke 500m sighting check · voeding na 45 min'},
+      {z:'sz1',n:'Uitzwemmen',d:'200m',m:'RPE 1–2',note:''},
+    ]}]
+  },
+  swim_rec: {
+    type:'swim', label:'Herstelzwem', dur:'±35 min',
+    title:'Zwemmen — herstel',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Herstelzwem',d:'1200m',m:'1:55–2:05/100m · RPE 3–4',note:'200m in · 5×150m · 200m uit'},
+    ]}]
+  },
+  swimrun_easy: {
+    type:'event', label:'Swimrun rustig', dur:'±2u',
+    title:'Swimrun — afwisselen zwem & loop (rustig)',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Opstart',d:'10 min loop',m:'Z2 · 5:30–5:50/km · RPE 3–4',note:'Inlopen op gemak · cadans hoog 170+ spm'},
+      {z:'sz2',n:'Wisselblokken zwem-loop',d:'1u 30 min',m:'Zwem RPE 4 · loop Z2',note:'Afwisselen 5–10 min zwem / 10–15 min loop · pullbuoy + paddles in water · schoenen aan (drainerend) · rustige flow'},
+      {z:'sz1',n:'Uitlopen',d:'15 min loop',m:'Z1/Z2 · rustig',note:'Cooldown · rek IT-band en heupen na afloop'},
+    ]}]
+  },
+
+  // LOPEN
+  run_threshold: {
+    type:'run', label:'Drempelloop', dur:'±35 min',
+    title:'Lopen — drempelintervallen',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Warming-up',d:'10 min',m:'5:30–5:50/km · HR 134–150 · RPE 3–4',note:'A-skips · beenzwaaien'},
+      {z:'sz4',n:'4× 3 min drempel',d:'4×',m:'4:35–4:45/km · HR 163–173 · RPE 7–8',note:'Cadans 170–180 spm · loop op pace, HR mag oplopen · 3 min hersteldraf (5:30/km) tussendoor'},
+      {z:'sz1',n:'Cooling-down',d:'5 min',m:'rustig · HR <130',note:''},
+    ]}]
+  },
+  run_threshold_long: {
+    type:'run', label:'Drempelloop 4×4', dur:'±45 min',
+    title:'Lopen — drempelintervallen (lange variant)',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Warming-up',d:'10 min',m:'5:30–5:50/km · HR 134–150 · RPE 3–4',note:'A-skips · beenzwaaien · cadans-opbouw'},
+      {z:'sz4',n:'4× 4 min drempel',d:'4×',m:'4:35–4:45/km · HR 163–173 · RPE 7–8',note:'Cadans 170–180 spm (werkpunt!) · loop op pace · langere intervallen zorgen dat HR op zone komt · 3 min hersteldraf (5:30/km) tussendoor'},
+      {z:'sz1',n:'Cooling-down',d:'8 min',m:'rustig · HR <130',note:''},
+    ]}]
+  },
+  run_tempo: {
+    type:'run', label:'Tempoloop', dur:'±50 min',
+    title:'Lopen — tempo Z3',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Warming-up',d:'10 min',m:'5:30–5:50/km · HR 134–150 · RPE 3–4',note:''},
+      {z:'sz3',n:'Tempo blok',d:'25 min',m:'4:55–5:10/km · HR 151–162 · RPE 6',note:'Cadans 170–180 spm · gelijkmatig op pace'},
+      {z:'sz2',n:'Cooling-down',d:'10 min',m:'5:30/km · HR <140',note:''},
+    ]}]
+  },
+  run_long: {
+    type:'run', label:'Lange loop', dur:'1u 40 min',
+    title:'Lopen — lange duurloop',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Warming-up',d:'10 min',m:'5:30–5:50/km · HR 134–150',note:''},
+      {z:'sz2',n:'Lange duurloop',d:'1u 20 min',m:'5:15–5:35/km · HR 134–150 · RPE 4',note:'Cadans 170–180 spm · op pace, niet op HR · stop als benen zwaar zijn'},
+      {z:'sz1',n:'Cooling-down',d:'10 min',m:'5:45/km · HR <130',note:''},
+    ]}]
+  },
+  run_long_marathon: {
+    type:'run', label:'Lange loop', dur:'2u 30 min+',
+    title:'Lopen — marathonopbouw',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Warming-up',d:'10 min',m:'5:30–5:50/km · HR 134–150',note:''},
+      {z:'sz2',n:'Hoofddeel',d:'2u–2u 45min',m:'5:15–5:35/km · HR 134–150 · RPE 4–5',note:'Op pace lopen · volume afhankelijk van week · gel elke 40 min'},
+      {z:'sz3',n:'Finish tempo',d:'laatste 15 min',m:'4:55–5:10/km · HR 151–162',note:'Marathondoel-tempo op vermoeide benen'},
+      {z:'sz1',n:'Cooling-down',d:'5 min',m:'rustig · HR <130',note:''},
+    ]}]
+  },
+  run_easy: {
+    type:'run', label:'Rustige loop', dur:'±45 min',
+    title:'Lopen — rustige duurloop',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Duurloop',d:'45 min',m:'5:30–5:50/km · HR 134–150 · RPE 3–4',note:'Cadans 170–180 spm · loop op pace, ontspannen'},
+    ]}]
+  },
+  run_brick: {
+    type:'run', label:'Brick loop', dur:'±20 min',
+    title:'Lopen — brick (na fietsen)',
+    steps:[{sess:'', items:[
+      {z:'sz3',n:'Brick uitloop',d:'15–20 min',m:'4:55–5:10/km · HR 151–162 · RPE 5–6',note:'Direct na fiets · eerste km zware benen normaal · noteer T1-tijd'},
+    ]}]
+  },
+
+  // FIETSEN
+  bike_z3: {
+    type:'bike', label:'Fiets Z3', dur:'1u 30 min',
+    title:'Fietsen — zone 3 blokken',
+    steps:[{sess:'', items:[
+      {z:'sz1',n:'Warming-up',d:'10 min',m:'<130W · HR <120',note:'Cadans opbouwen naar 90 rpm'},
+      {z:'sz3',n:'4× Zone 3 blok',d:'4× 8 min',m:'178–213W · HR 134–142',note:'Cadans 90–93 rpm · 3 min herstel (130–160W) tussen sets'},
+      {z:'sz2',n:'Uitrijden',d:'16 min',m:'130–178W · HR 121–133',note:''},
+      {z:'sz1',n:'Cooling-down',d:'10 min',m:'<130W · HR <115',note:''},
+    ]}]
+  },
+  bike_z2: {
+    type:'bike', label:'Fiets Z2', dur:'1u 30 min',
+    title:'Fietsen — zone 2',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Zone 2 rit',d:'1u 30 min',m:'130–178W · HR 121–133',note:'Cadans 90–93 rpm · vlak parcours'},
+    ]}]
+  },
+  bike_long: {
+    type:'bike', label:'Lange fiets', dur:'3u',
+    title:'Fietsen — lange duurrit',
+    steps:[{sess:'', items:[
+      {z:'sz1',n:'Opstart',d:'15 min',m:'<130W · HR <120',note:'Rustig inrijden'},
+      {z:'sz2',n:'Hoofddeel',d:'2u 15 min',m:'130–178W · HR 121–133',note:'Cadans 90 rpm · gel elke 40 min'},
+      {z:'sz3',n:'Enkele Z3 pieken',d:'3× 5 min',m:'178–213W',note:'Bij heuvels/klim · anders doorrijden Z2'},
+      {z:'sz1',n:'Uitrijden',d:'15 min',m:'<130W',note:''},
+    ]}]
+  },
+  bike_z2_long: {
+    type:'bike', label:'Z2 lange rit', dur:'2u 15min',
+    title:'Fietsen — Z2 lang met lichte pieken',
+    steps:[{sess:'', items:[
+      {z:'sz1',n:'Opstart',d:'15 min',m:'<130W · HR <120',note:'Rustig inrijden · cadans opbouwen naar 90 rpm'},
+      {z:'sz2',n:'Hoofddeel Z2',d:'1u 30 min',m:'130–178W · HR 121–133',note:'Cadans 90+ rpm · gel elke 40 min · bidon elke 20 min · test race-voeding'},
+      {z:'sz3',n:'2× lichte Z3-piek',d:'2× 3–5 min',m:'178–213W · HR 134–142',note:'Alleen bij natuurlijke heuvel of als gevoel goed is · anders blijven in Z2'},
+      {z:'sz2',n:'Z2 vervolg',d:'15–30 min',m:'130–178W',note:'Tot totaal 2u15-2u30 · pas indien rug ongemak verschijnt'},
+      {z:'sz1',n:'Uitrijden',d:'10 min',m:'<130W',note:''},
+    ]}]
+  },
+  bike_threshold: {
+    type:'bike', label:'Fiets drempel', dur:'1u 15 min',
+    title:'Fietsen — drempelintervallen',
+    steps:[{sess:'', items:[
+      {z:'sz1',n:'Warming-up',d:'15 min',m:'<130W',note:''},
+      {z:'sz4',n:'3× 8 min drempel',d:'3×',m:'213–249W · HR 143–151',note:'4 min herstel Z1 tussen sets'},
+      {z:'sz2',n:'Uitrijden',d:'10 min',m:'130–178W',note:''},
+      {z:'sz1',n:'Cooling-down',d:'10 min',m:'<130W',note:''},
+    ]}]
+  },
+  bike_easy: {
+    type:'bike', label:'Fiets rustig', dur:'1u',
+    title:'Fietsen — herstel',
+    steps:[{sess:'', items:[
+      {z:'sz1',n:'Hersteltempo',d:'1u',m:'<150W · HR <125',note:'Benen los draaien · cadans 85–95 rpm'},
+    ]}]
+  },
+
+  // KRACHT
+  str_explo: {
+    type:'str', label:'Kracht', dur:'30 min',
+    title:'Krachttraining — explosief',
+    steps:[{sess:'', items:[
+      {z:'sz3',n:'Box jumps',d:'3×8',m:'RPE 6–7',note:''},
+      {z:'sz3',n:'Split squats',d:'3×10 p/been',m:'RPE 6–7',note:''},
+      {z:'sz3',n:'Nordic hamstring curls',d:'3×8',m:'RPE 7',note:''},
+      {z:'sz3',n:'Step-ups met gewicht',d:'3×12 p/been',m:'RPE 6',note:''},
+    ]}]
+  },
+  str_maintain: {
+    type:'str', label:'Kracht onderhoud', dur:'25 min',
+    title:'Krachttraining — onderhoud',
+    steps:[{sess:'', items:[
+      {z:'sz3',n:'Squats',d:'3×10',m:'RPE 5–6',note:''},
+      {z:'sz3',n:'Deadlifts',d:'3×8',m:'RPE 6',note:''},
+      {z:'sz3',n:'Plank variaties',d:'3×45 sec',m:'Core stabiliteit',note:''},
+      {z:'sz3',n:'Calf raises',d:'3×15',m:'RPE 5',note:''},
+    ]}]
+  },
+  str_core: {
+    type:'str', label:'Kracht core/rug', dur:'25 min',
+    title:'Krachttraining — core & rug-vriendelijk',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Dead bug',d:'3×10 p/zijde',m:'RPE 4',note:'Lage rug stabiel op de mat houden · langzaam'},
+      {z:'sz2',n:'Bird dog',d:'3×10 p/zijde',m:'RPE 4',note:'Hoofd, rug en heup in lijn · niet doorzakken'},
+      {z:'sz2',n:'Side plank',d:'3×30 sec p/zijde',m:'Laterale stabiliteit',note:'Of op knie als zwaar'},
+      {z:'sz2',n:'Glute bridge',d:'3×12',m:'RPE 4–5',note:'Bilspieren actief, geen overstrekking'},
+      {z:'sz2',n:'Cat-cow',d:'2 min mobility',m:'Mobiliteit',note:'Rustige flow · ademhaling sturen'},
+      {z:'sz1',n:'Stretching onderrug/heupen',d:'5 min',m:'Lichte rek',note:'Pigeon, child pose, knee-to-chest'},
+    ]}]
+  },
+  decision_brouwersdam: {
+    type:'event', label:'⚖️ Beslis: Brouwersdam', dur:'5 min',
+    title:'Beslismoment Brouwersdam 9 mei',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Check 1: HRV-status',d:'',m:'Ochtendmeting Garmin',note:'Groen = doe race normaal · Oranje = doe Z2 variant · Rood = skip race'},
+      {z:'sz2',n:'Check 2: Rug',d:'',m:'Klachtvrij?',note:'Geen pijn bij voorover/draaien = oké · Twijfel = sub-maximaal · Pijn = skip'},
+      {z:'sz2',n:'Check 3: Trainingsstatus',d:'',m:'Productief / Onderhoud?',note:'Herstellend of niet-productief = race in Z2 of skip'},
+      {z:'sz3',n:'Beslissing',d:'',m:'A / B / C',note:'A = Race normaal (Z2 fiets eerste 40km, dan Z3, loop Z3) · B = Z2 hele race, geen prestatie · C = Skip race, alleen rustig zwemmen of helemaal niets'},
+    ]}]
+  },
+
+  // EVENTS (B + C races + grote trainingsevents)
+  kings_ride: {
+    type:'event', label:"King's Ride", dur:'±5u',
+    title:"King's Ride 150 km fartlek + brick",
+    steps:[{sess:'', items:[
+      {z:'sz1',n:'Opstart',d:'km 0–20',m:'<150W · HR <120',note:'Eigen tempo · gel km 15'},
+      {z:'sz2',n:'Zone 2 lange fase',d:'km 20–70',m:'130–178W · HR 121–133',note:'Cadans 90–93 rpm · gel km 45+75'},
+      {z:'sz3',n:'Grote col',d:'km 70–85',m:'178–213W · HR 134–142',note:'Gelijkmatig tempo'},
+      {z:'sz2',n:'Glooiend gedeelte',d:'km 85–125',m:'130–178W',note:''},
+      {z:'sz3',n:'Twee klimmetjes',d:'km 125–145',m:'178–213W',note:''},
+      {z:'sz4',n:'Brick uitloop',d:'15 min',m:'HR 151–162 · RPE 5–6',note:'Noteer T1-tijd · doel <5 min'},
+    ]}]
+  },
+
+  // RACES
+  race_brouwersdam: {
+    type:'race', label:'🏁 Brouwersdam 90', dur:'±3u',
+    title:'Brouwersdam 90 — ¼ triathlon (B-race)',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Zwem 900m',d:'±15 min',m:'Z2 · RPE 5',note:'Sighting oefenen · rustige start'},
+      {z:'sz1',n:'T1',d:'',m:'<3 min',note:'Noteer tijd'},
+      {z:'sz2',n:'Fiets 45 km',d:'±1u 20min',m:'Eerste 40km Z2 (130–178W) · laatste 5km Z3',note:'Cadans 90 rpm · gel km 20+35'},
+      {z:'sz1',n:'T2',d:'',m:'<2 min',note:'Noteer tijd'},
+      {z:'sz3',n:'Loop 10 km',d:'±55 min',m:'Z3 · HR 151–162 · RPE 6',note:'Cadans 170+ spm'},
+    ]}]
+  },
+  race_oversteek: {
+    type:'race', label:'🏁 De Oversteek 3 km', dur:'±55 min',
+    title:'De Oversteek — 3 km OWZ (B)',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Inzwemmen',d:'10 min',m:'RPE 2–3',note:''},
+      {z:'sz2',n:'Race 3 km',d:'±45 min',m:'Volledig Z2 · RPE 5',note:'Sighting oefenen · geen race-inspanning · voeding na 30 min'},
+    ]}]
+  },
+  race_oud_gastel: {
+    type:'race', label:'🏁 Oud Gastel ⅓', dur:'±3u 30min',
+    title:'Oud Gastel ⅓ triathlon — generale 70.3',
+    steps:[{sess:'', items:[
+      {z:'sz3',n:'Zwem 1250m',d:'±22 min',m:'Z2/Z3 · race-pace 70.3',note:'Test race-strategie: rustige 200m, dan tempo'},
+      {z:'sz1',n:'T1',d:'',m:'<3 min',note:'Test transitie zoals 70.3'},
+      {z:'sz2',n:'Fiets 60 km',d:'±1u 40min',m:'178–213W · HR 134–142',note:'Test 70.3 race-pace · voeding schema: gel elke 30 min'},
+      {z:'sz1',n:'T2',d:'',m:'<2 min',note:''},
+      {z:'sz3',n:'Loop 15 km',d:'±1u 25min',m:'Z3 · HR 151–162 · RPE 6',note:'Cadans 170+ spm · dit is je 70.3 looptempo'},
+    ]}]
+  },
+  race_swimrun_ams: {
+    type:'race', label:'🏁 Swimrun Amsterdam', dur:'4–5u',
+    title:'Backyard Ultra Swimrun Amsterdam (C)',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'5–6 ronden swimrun',d:'elk ±45 min',m:'Z2/Z3 · RPE 5–6',note:'Plezier · stoppen als herstel te kort wordt · voeding tussen ronden'},
+    ]}]
+  },
+  race_utrecht: {
+    type:'race', label:'🏁 Utrecht ⅓', dur:'±3u 30min',
+    title:'Utrecht ⅓ triathlon (C)',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Zwem 1250m',d:'±25 min',m:'Z2 · RPE 4–5',note:'Trainingsrace · geen prestatiedruk'},
+      {z:'sz1',n:'T1',d:'',m:'',note:''},
+      {z:'sz2',n:'Fiets 60 km',d:'±1u 50min',m:'130–178W · Z2',note:'Trainingstempo · test voeding'},
+      {z:'sz1',n:'T2',d:'',m:'',note:''},
+      {z:'sz2',n:'Loop 15 km',d:'±1u 20min',m:'Z2 · HR 134–150',note:'Rustig tempo houden'},
+    ]}]
+  },
+  race_city_swim: {
+    type:'race', label:'🏁 Rotterdam City Swim 3km', dur:'±55 min',
+    title:'Rotterdam City Swim — 3 km (activering voor 70.3)',
+    steps:[{sess:'', items:[
+      {z:'sz1',n:'Inzwemmen',d:'10 min',m:'RPE 2',note:''},
+      {z:'sz2',n:'3 km',d:'±45 min',m:'Z1/Z2 · RPE 4',note:'Activering · geen race · 6 dagen voor 70.3'},
+    ]}]
+  },
+  race_luxemburg: {
+    type:'race', label:'🏆 70.3 LUXEMBURG', dur:'±5u 15min',
+    title:'🏆 70.3 Luxemburg — A-RACE',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Zwem 1,9 km',d:'30–33 min',m:'1:35–1:45/100m · Z2',note:'Rustige eerste 200m · dan tempo houden'},
+      {z:'sz1',n:'T1',d:'<2 min',m:'',note:''},
+      {z:'sz3',n:'Fiets 90 km',d:'2:30–2:45',m:'178–213W · HR 134–142',note:'Cadans 90 rpm · gel elke 30 min · bidon elke 20 min'},
+      {z:'sz1',n:'T2',d:'<2 min',m:'',note:''},
+      {z:'sz3',n:'Loop 21,1 km',d:'1:52–2:00',m:'5:20–5:41/km · Z3',note:'Cadans 170+ · walk-jog bij HR > 168 · gel elke 5 km'},
+    ]}]
+  },
+  race_eilanden: {
+    type:'race', label:'🏁 Rondje Eilanden', dur:'±2u 30min',
+    title:'Rondje Eilanden — swimrun (C, actief herstel)',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'2 ronden swimrun',d:'±2u 30min',m:'Z1/Z2 · RPE 4',note:'Actief herstel na 70.3 · plezier · Vinkeveense Plassen'},
+    ]}]
+  },
+  race_pampus: {
+    type:'race', label:'🏁 Rondje Pampus 3km', dur:'±55 min',
+    title:'Rondje Pampus — 3 km OWZ (IJsselmeer volume)',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'3 km',d:'±50 min',m:'Z2 · RPE 4–5',note:'IJsselmeer water gewenning · voeding testen'},
+    ]}]
+  },
+  race_apeldoorn: {
+    type:'race', label:'🏁 Sprint Apeldoorn', dur:'±1u 30min',
+    title:'Sprint triathlon Apeldoorn (C)',
+    steps:[{sess:'', items:[
+      {z:'sz3',n:'Zwem 750m',d:'±13 min',m:'Z3/Z4 mag · RPE 7',note:'Race-pace sprint'},
+      {z:'sz4',n:'Fiets 20 km',d:'±35 min',m:'Z3/Z4 · RPE 7–8',note:'Cadans hoog'},
+      {z:'sz3',n:'Loop 5 km',d:'±25 min',m:'Z3 · RPE 7',note:'Benen sparen voor Marken dag erna!'},
+    ]}]
+  },
+  race_marken: {
+    type:'race', label:'🏁 Marken-Monnickendam', dur:'±50 min',
+    title:'Marken–Monnickendam 3 km OWZ (dag na sprint)',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'3 km OWZ',d:'±50 min',m:'Z2 · RPE 4–5',note:'Zwemmen op vermoeide benen · IJsselmeer prep'},
+    ]}]
+  },
+  race_epe: {
+    type:'race', label:'🏁 ¼ Triathlon Epe', dur:'±3u',
+    title:'¼ Triathlon Epe — activering IJsselmeer',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Zwem 900m',d:'±16 min',m:'Z1/Z2 · RPE 4',note:'7 dagen voor IJsselmeer · geen druk'},
+      {z:'sz2',n:'Fiets 45 km',d:'±1u 25min',m:'Z1/Z2 · <150W',note:'Rustig tempo'},
+      {z:'sz2',n:'Loop 10 km',d:'±55 min',m:'Z2 · HR 134–150',note:'Stop bij ongemak'},
+    ]}]
+  },
+  race_ijsselmeer: {
+    type:'race', label:'🏆 IJSSELMEER 22km', dur:'±8u',
+    title:'🏆 IJsselmeer 22 km OWZ — A-RACE',
+    steps:[{sess:'', items:[
+      {z:'sz2',n:'Eerste 15 km',d:'±5u 30min',m:'Z2 · RPE 4–5',note:'Gelijkmatig tempo · voeding elke 45 min gel · slaglengte bewaken'},
+      {z:'sz3',n:'Laatste 7 km',d:'±2u 30min',m:'Z3 mag · RPE 6–7',note:'Laatste 5 km push als energie over is'},
+    ]}]
+  },
+  race_marathon: {
+    type:'race', label:'🏆 HERFSTMARATHON', dur:'±3u 30min',
+    title:'🏆 Herfstmarathon — A-RACE',
+    steps:[{sess:'', items:[
+      {z:'sz3',n:'Eerste helft (21,1 km)',d:'1:46',m:'5:01/km · HR 151–162',note:'DISCIPLINE: niet te hard starten · gel elke 5 km'},
+      {z:'sz4',n:'Tweede helft (21,1 km)',d:'1:44',m:'4:55/km · HR 151–168',note:'Negative split · push laatste 10 km als kracht er is'},
+    ]}]
+  },
+  race_zwarte_plasje: {
+    type:'race', label:'🏆 ZWARTE PLASJE ¼', dur:'±2u 15min',
+    title:'🏆 Zwarte Plasje ¼ triathlon — A-RACE',
+    steps:[{sess:'', items:[
+      {z:'sz4',n:'Zwem 1000m',d:'±18 min',m:'1:35–1:45/100m · Z3/Z4',note:'Race-pace · harde start eerste 200m om positie te pakken · sighting elke 6 slagen'},
+      {z:'sz1',n:'T1',d:'<2 min',m:'',note:'Snelle wissel · brillen klaar'},
+      {z:'sz4',n:'Fiets 40 km',d:'±1u 5min',m:'213–249W · HR 143–151',note:'Z3/Z4 race-pace · cadans 90+ rpm · gel km 15+30 · bidon elke 15 min'},
+      {z:'sz1',n:'T2',d:'<2 min',m:'',note:''},
+      {z:'sz4',n:'Loop 10 km',d:'±48 min',m:'4:45/km · HR 163–173',note:'Z4 alles geven · cadans 175+ spm · negative split tweede 5 km'},
+    ]}]
+  },
+};
+
+// ============================================================
+// SEIZOEN EVENTS
+// ============================================================
+const EVENTS = [
+  { date:'2026-05-09', name:'Brouwersdam 90 — ¼ triathlon', detail:'Zwem Z2 · Fiets eerste 40km Z2 dan Z3 · Loop Z3 · Noteer T1+T2', tier:'B' },
+  { date:'2026-05-30', name:'De Oversteek — 3 km OWZ', detail:'Volledig Z2 · sighting oefenen · geen race', tier:'B' },
+  { date:'2026-06-13', name:'Oud Gastel — ⅓ triathlon', detail:'Generale 70.3 · alles uitvoeren als racedag · analyseer achteraf', tier:'B' },
+  { date:'2026-06-20', name:'Backyard Ultra Swimrun Amsterdam', detail:'Max 5–6 ronden · Z2/Z3 · plezier', tier:'C' },
+  { date:'2026-06-28', name:'⅓ Triathlon Utrecht', detail:'Trainingsrace · Z2 alle disciplines · geen prestatiedruk', tier:'C' },
+  { date:'2026-07-05', name:'Rotterdam City Swim — 3 km', detail:'Z1/Z2 · activering 6 dagen voor 70.3 · geen race', tier:'C' },
+  { date:'2026-07-11', name:'🏆 70.3 Luxemburg', detail:'Doel: sub 5:15 · Zwem Z2 · Fiets 178–213W · Loop Z3', tier:'A' },
+  { date:'2026-07-18', name:'Rondje Eilanden — swimrun (2 ronden)', detail:'Actief herstel · Z1/Z2 · Vinkeveense Plassen', tier:'C' },
+  { date:'2026-07-25', name:'Rondje Pampus — 3 km OWZ', detail:'Z2 zwemmen · IJsselmeer volume opbouwen', tier:'C' },
+  { date:'2026-08-05', name:'Sprint triathlon Apeldoorn', detail:'Z3/Z4 mag · benen sparen voor Marken dag erna', tier:'C' },
+  { date:'2026-08-06', name:'Marken–Monnickendam — 3 km OWZ', detail:'Z2 · zwemmen op vermoeide benen · IJsselmeer prep', tier:'C' },
+  { date:'2026-08-23', name:'¼ Triathlon Epe', detail:'Z1/Z2 · activering 7 dagen voor IJsselmeer · stop bij ongemak', tier:'C' },
+  { date:'2026-08-30', name:'🏆 IJsselmeer 22 km OWZ', detail:'Eerste 15 km Z2 · laatste 5 km mag Z3 · voeding elke 45 min', tier:'A' },
+  { date:'2026-09-13', name:'🏆 Zwarte Plasje ¼ triathlon', detail:'Z3/Z4 alles geven · Zwem 1000m · Fiets 40km @ 213–249W · Loop 10km @ 4:45/km', tier:'A' },
+  { date:'2026-11-01', name:'🏆 Herfstmarathon', detail:'Doel: sub 3:30 · eerste helft 1:46 · tweede helft 1:44', tier:'A' },
+];
+
+function formatEventDate(iso) {
+  const d = parseDate(iso);
+  const months = ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
+  return d.getDate() + ' ' + months[d.getMonth()];
+}
+
+function getDaysUntil(iso) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = parseDate(iso);
+  return Math.round((target - today) / 86400000);
+}
+
+function formatCountdown(days) {
+  if (days === 0) return 'Vandaag!';
+  if (days === 1) return 'Morgen';
+  if (days < 7) return 'over ' + days + ' dagen';
+  if (days < 14) return 'over 1 week';
+  if (days < 30) return 'over ' + Math.round(days/7) + ' weken';
+  if (days < 60) return 'over 1 maand';
+  return 'over ' + Math.round(days/30) + ' maanden';
+}
+
+function renderSeason() {
+  const container = document.getElementById('seasonContent');
+  if (!container) return;
+
+  const upcoming = [];
+  const past = [];
+
+  EVENTS.forEach(e => {
+    const daysUntil = getDaysUntil(e.date);
+    const item = Object.assign({}, e, { daysUntil: daysUntil });
+    if (daysUntil >= 0) upcoming.push(item);
+    else past.push(item);
+  });
+
+  upcoming.sort((a,b) => a.daysUntil - b.daysUntil);
+  past.sort((a,b) => b.daysUntil - a.daysUntil); // most recent first
+
+  let html = '';
+
+  // UPCOMING
+  if (upcoming.length > 0) {
+    html += '<div class="phase-title">Aanstaande events (' + upcoming.length + ')</div><div class="season-grid">';
+    upcoming.forEach(e => {
+      html += renderEventCard(e, false);
+    });
+    html += '</div>';
+  }
+
+  // SEPARATOR + PAST
+  if (past.length > 0) {
+    if (upcoming.length > 0) {
+      html += '<div style="height:1px;background:#ddd;margin:24px 0 16px 0"></div>';
+    }
+    html += '<div class="phase-title">Voorbij (' + past.length + ')</div><div class="season-grid">';
+    past.forEach(e => {
+      html += renderEventCard(e, true);
+    });
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+function renderEventCard(e, isPast) {
+  const tierLetter = e.tier.toLowerCase();
+  const borderClass = 'border-' + tierLetter;
+  const badgeClass = 'badge-' + tierLetter;
+  const extraStyle = e.tier === 'A' ? 'border-width:3px;' : '';
+  const pastStyle = isPast ? 'opacity:0.55;' : '';
+  const countdownHtml = !isPast
+    ? '<div style="font-size:11px;color:#888;margin-top:2px">' + formatCountdown(e.daysUntil) + '</div>'
+    : '<div style="font-size:11px;color:#0F6E56;margin-top:2px">✅ voltooid</div>';
+  return '<div class="event-card ' + borderClass + '" style="' + extraStyle + pastStyle + '">' +
+    '<div>' +
+      '<div class="event-date">' + formatEventDate(e.date) + '</div>' +
+      countdownHtml +
+    '</div>' +
+    '<div style="flex:1;margin:0 10px">' +
+      '<div class="event-name">' + e.name + '</div>' +
+      '<div class="event-detail">' + e.detail + '</div>' +
+    '</div>' +
+    '<span class="event-badge ' + badgeClass + '">' + e.tier + '</span>' +
+  '</div>';
+}
+
+// Helper om datum-string te maken (Safari-safe: geen ISO-parsing)
+function parseDate(iso) {
+  const parts = iso.split('-');
+  return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+}
+
+function formatIso(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+
+function dayDates(startIso) {
+  const start = parseDate(startIso);
+  const names = ['Ma','Di','Wo','Do','Vr','Za','Zo'];
+  const months = ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    out.push({
+      name: names[i],
+      date: d.getDate() + ' ' + months[d.getMonth()],
+      iso: formatIso(d)
+    });
+  }
+  return out;
+}
+
+function buildWeek(meta, plan) {
+  const dates = dayDates(meta.start);
+  return {
+    label: meta.label,
+    start: meta.start,
+    days: dates.map((d, i) => ({
+      name: d.name,
+      date: d.date,
+      iso: d.iso,
+      sessions: plan[i] || [],
+      done: []
+    }))
+  };
+}
+
+// Default patronen per fase (ma, di, wo, do, vr, za, zo)
+const P = {
+  // Fase 1 — 70.3 opbouw
+  f1_base:   [['swim_tech'],['run_threshold'],['str_explo'],['bike_z3','swim_dur'],['bike_z2','swim_ow'],['bike_long'],['run_long','swim_rec']],
+  f1_build:  [['swim_tech'],['run_threshold'],['str_explo'],['bike_z3','swim_dur'],['bike_z2','swim_ow'],['bike_long'],['run_long','swim_rec']],
+  f1_peak:   [['swim_tech'],['run_tempo'],['str_explo'],['bike_threshold','swim_dur'],['bike_z2','swim_ow'],['bike_long'],['run_long','swim_rec']],
+  f1_deload: [['swim_tech'],['run_easy'],['str_maintain'],['bike_z2','swim_rec'],[],['bike_easy'],['run_easy']],
+
+  // Fase 2 — IJsselmeer opbouw
+  f2_build:  [['swim_long'],['run_tempo'],['str_maintain'],['swim_ow_long'],['bike_z2'],['swim_ow_long'],['run_long','swim_rec']],
+  f2_peak:   [['swim_long'],['run_tempo'],['str_maintain'],['swim_ow_long'],['bike_z2'],['swim_ow_long'],['run_long','swim_rec']],
+  f2_deload: [['swim_dur'],['run_easy'],[],['swim_ow'],['bike_easy'],['swim_ow'],['run_easy']],
+
+  // Fase 3 — Marathon
+  f3_base:   [['run_easy'],['run_threshold'],['str_maintain','swim_rec'],['run_tempo'],['bike_z2'],['swim_ow'],['run_long_marathon']],
+  f3_build:  [['run_easy'],['run_threshold'],['str_maintain','swim_rec'],['run_tempo'],['bike_z2'],['swim_ow'],['run_long_marathon']],
+  f3_peak:   [['run_easy'],['run_threshold'],['str_maintain'],['run_tempo'],['bike_easy'],['swim_rec'],['run_long_marathon']],
+  f3_deload: [['run_easy'],['run_easy'],['str_maintain'],['run_easy'],[],['swim_rec'],['run_long']],
+
+  // Taper 70.3 Luxemburg (race za dus week 13 van ma 6 jul - zo 12 jul)
+  taper_70_3: [['swim_tech'],['run_easy'],['bike_easy','race_city_swim'],['run_easy'],['swim_rec','bike_easy'],[],['race_luxemburg']],
+
+  // Taper IJsselmeer (race zo 30 aug)
+  taper_ijs: [['swim_dur'],['run_easy'],['bike_easy'],['swim_ow'],[],['swim_rec'],['race_ijsselmeer']],
+
+  // Taper marathon (race zo 1 nov)
+  taper_mar: [['run_easy'],['run_tempo'],['str_maintain'],['run_easy'],[],['run_easy'],['race_marathon']],
+
+  // Recovery na 70.3 (week 14)
+  rec_post_703: [[],['swim_rec'],[],['run_easy'],[],['bike_easy'],['race_eilanden']],
+};
+
+// Plaats events op juiste dagen (overschrijft default patroon op betreffende dag)
+function placeEvent(plan, dayIndex, eventId, keepRest=false) {
+  const p = plan.map(x => [...x]);
+  if (keepRest && p[dayIndex].length > 0) {
+    p[dayIndex] = [...p[dayIndex], eventId];
+  } else {
+    p[dayIndex] = [eventId];
+  }
+  return p;
+}
+
+// ============================================================
+// ALLE WEKEN
+// ============================================================
+const WEEK_META = [
+  { id:'w1',  start:'2026-04-13', label:'W1 · 13–19 apr' },
+  { id:'w2',  start:'2026-04-20', label:'W2 · 20–26 apr' },
+  { id:'w3',  start:'2026-04-27', label:'W3 · 27 apr–3 mei' },
+  { id:'w4',  start:'2026-05-04', label:'W4 · 4–10 mei' },
+  { id:'w5',  start:'2026-05-11', label:'W5 · 11–17 mei' },
+  { id:'w6',  start:'2026-05-18', label:'W6 · 18–24 mei' },
+  { id:'w7',  start:'2026-05-25', label:'W7 · 25–31 mei' },
+  { id:'w8',  start:'2026-06-01', label:'W8 · 1–7 jun' },
+  { id:'w9',  start:'2026-06-08', label:'W9 · 8–14 jun' },
+  { id:'w10', start:'2026-06-15', label:'W10 · 15–21 jun' },
+  { id:'w11', start:'2026-06-22', label:'W11 · 22–28 jun' },
+  { id:'w12', start:'2026-06-29', label:'W12 · 29 jun–5 jul' },
+  { id:'w13', start:'2026-07-06', label:'W13 · 6–12 jul · 70.3 Luxemburg' },
+  { id:'w14', start:'2026-07-13', label:'W14 · 13–19 jul' },
+  { id:'w15', start:'2026-07-20', label:'W15 · 20–26 jul' },
+  { id:'w16', start:'2026-07-27', label:'W16 · 27 jul–2 aug' },
+  { id:'w17', start:'2026-08-03', label:'W17 · 3–9 aug' },
+  { id:'w18', start:'2026-08-10', label:'W18 · 10–16 aug' },
+  { id:'w19', start:'2026-08-17', label:'W19 · 17–23 aug' },
+  { id:'w20', start:'2026-08-24', label:'W20 · 24–30 aug · IJsselmeer' },
+  { id:'w21', start:'2026-08-31', label:'W21 · 31 aug–6 sep' },
+  { id:'w22', start:'2026-09-07', label:'W22 · 7–13 sep · Zwarte Plasje' },
+  { id:'w23', start:'2026-09-14', label:'W23 · 14–20 sep' },
+  { id:'w24', start:'2026-09-21', label:'W24 · 21–27 sep' },
+  { id:'w25', start:'2026-09-28', label:'W25 · 28 sep–4 okt' },
+  { id:'w26', start:'2026-10-05', label:'W26 · 5–11 okt' },
+  { id:'w27', start:'2026-10-12', label:'W27 · 12–18 okt' },
+  { id:'w28', start:'2026-10-19', label:'W28 · 19–25 okt' },
+  { id:'w29', start:'2026-10-26', label:'W29 · 26 okt–1 nov · Marathon' },
+];
+
+// Bouw de plannen per week
+const WEEK_PLANS = {
+  // W1 — basis
+  w1: P.f1_base,
+
+  // W2 — basis (huidige week zoals origineel, met King's Ride op zo 26 apr)
+  w2: (function(){
+    let p = P.f1_base.map(x => [...x]);
+    p[5] = []; // za = rust (was geen King's Ride)
+    p[6] = ['kings_ride']; // zo = King's Ride
+    return p;
+  })(),
+
+  // W3 — Herstel rug (aangepast 30 apr): voorzichtig opbouwen na rugklachten
+  // Ma 27 + Di 28 + Wo 29 = rust, Do 30 zwem, Vr 1 mei rustige loop, Za 2 mei fiets, Zo 3 mei OW zwem
+  w3: [[],[],[],['swim_tech'],['run_easy'],['bike_z2'],['swim_ow']],
+
+  // W4 — race week Brouwersdam (za 9 mei) — aangepast 4 mei
+  // Ma loop drempel/tempo, di Z2 lang (vrije dag), wo rustige loop, do fiets rustig + herstelzwem, vr rust, za race, zo OW zwem
+  w4: [['run_tempo'],['bike_z2_long'],['run_easy'],['bike_easy','swim_rec'],[],['race_brouwersdam'],['swim_ow']],
+
+  // W5 — herstelweek na Brouwersdam — aangepast 14 mei
+  // Ma rust+fysio, di zwem, wo loop, do loop+OW zwem zoomers, vr fiets Z2, za swimrun rustig, zo lange fiets
+  w5: [[],['swim_tech'],['run_threshold'],['run_easy','swim_ow_legs'],['bike_z2'],['swimrun_easy'],['bike_long']],
+
+  // W6 — aangepast 14 mei: ma rust, di zwem, wo drempel 4x4, do fiets Z3, vr fiets Z2, za lange loop, zo lange fiets
+  w6: [[],['swim_tech'],['run_threshold_long'],['bike_z3'],['bike_z2'],['run_long'],['bike_long']],
+
+  // W7 — peak met De Oversteek op za 30 mei
+  w7: (function(){
+    let p = P.f1_peak.map(x => [...x]);
+    p[5] = ['race_oversteek'];
+    return p;
+  })(),
+
+  // W8 — deload (elke 4e week), zondag wel Oud Gastel prep → nee, Oud Gastel is 13 jun = W9
+  w8: P.f1_deload,
+
+  // W9 — peak met Oud Gastel op za 13 jun (generale 70.3)
+  w9: (function(){
+    let p = [['swim_tech'],['run_easy'],['str_maintain'],['bike_easy','swim_dur'],[],['race_oud_gastel'],['run_easy']];
+    return p;
+  })(),
+
+  // W10 — peak met Swimrun Amsterdam op za 20 jun
+  w10: (function(){
+    let p = P.f1_peak.map(x => [...x]);
+    p[5] = ['race_swimrun_ams'];
+    return p;
+  })(),
+
+  // W11 — peak met Utrecht ⅓ op zo 28 jun
+  w11: (function(){
+    let p = P.f1_peak.map(x => [...x]);
+    p[6] = ['race_utrecht'];
+    return p;
+  })(),
+
+  // W12 — taper 70.3
+  w12: [['swim_tech'],['run_threshold'],['str_maintain'],['bike_z3','swim_rec'],[],['bike_easy','swim_ow'],['run_tempo']],
+
+  // W13 — race week 70.3 Luxemburg (za 11 jul) met Rotterdam City Swim op zo 5 jul
+  w13: (function(){
+    let p = P.taper_70_3.map(x => [...x]);
+    return p;
+  })(),
+
+  // W14 — recovery + Rondje Eilanden op za 18 jul
+  w14: P.rec_post_703,
+
+  // W15 — build f2 + Rondje Pampus op za 25 jul
+  w15: (function(){
+    let p = P.f2_build.map(x => [...x]);
+    p[5] = ['race_pampus'];
+    return p;
+  })(),
+
+  // W16 — peak f2
+  w16: P.f2_peak,
+
+  // W17 — peak f2 met Sprint Apeldoorn op wo 5 aug + Marken op do 6 aug
+  w17: (function(){
+    let p = P.f2_peak.map(x => [...x]);
+    p[2] = ['race_apeldoorn'];
+    p[3] = ['race_marken'];
+    return p;
+  })(),
+
+  // W18 — peak f2 (max volume)
+  w18: P.f2_peak,
+
+  // W19 — taper f2 + ¼ Triathlon Epe op zo 23 aug
+  w19: (function(){
+    let p = [['swim_dur'],['run_easy'],['str_maintain'],['swim_ow'],['bike_easy'],['swim_rec'],['race_epe']];
+    return p;
+  })(),
+
+  // W20 — race week IJsselmeer (zo 30 aug)
+  w20: P.taper_ijs,
+
+  // W21 — recovery na IJsselmeer
+  w21: [[],[],['run_easy'],[],['bike_easy'],[],['run_easy']],
+
+  // W22 — Race week Zwarte Plasje ¼ (zo 13 sep) - taper + race
+  w22: [['swim_tech'],['run_threshold'],['str_maintain'],['bike_z3'],[],['swim_rec','bike_easy'],['race_zwarte_plasje']],
+
+  // W23 — Recovery na Zwarte Plasje + start marathon-build
+  w23: [[],['swim_rec'],[],['run_easy'],['str_maintain'],['bike_easy'],['run_long_marathon']],
+
+  // W24 — deload (elke 4e week)
+  w24: P.f3_deload,
+
+  // W25 — build f3 (piek-volume opbouw)
+  w25: P.f3_build,
+
+  // W26 — peak f3 (32 km piek lange loop)
+  w26: P.f3_peak,
+
+  // W27 — peak f3 (laatste lange loop)
+  w27: P.f3_peak,
+
+  // W28 — taper marathon week 1
+  w28: [['run_easy'],['run_threshold'],['str_maintain'],['run_easy'],[],['bike_easy'],['run_long']],
+
+  // W29 — race week marathon (zo 1 nov)
+  w29: P.taper_mar,
+};
+
+// Bouw WEEKS object
+const WEEKS = {};
+WEEK_META.forEach(meta => {
+  WEEKS[meta.id] = buildWeek(meta, WEEK_PLANS[meta.id]);
+});
+
+// ============================================================
+// STATE — plan is read-only, user-acties apart opgeslagen
+// ============================================================
+// state.done: { "weekId:dayIndex:sessionId": true }
+// state.missed: { "weekId:dayIndex:sessionId": true } (sessie gemist/overgeslagen, blijft zichtbaar maar grijs)
+// state.moves: { "weekId:fromDay:sessionId": toDay }  (verplaatste sessies)
+// state.skips: { "weekId:dayIndex:sessionId": true }  (vervangen sessies, niet meer tonen)
+// state.feedback: { "weekId:dayIndex:sessionId": { text, updatedAt } }
+// state.metrics: { "weekId:dayIndex:sessionId": { duur_min, afstand_km, ... } }
+let state = {
+  done: {},
+  missed: {},
+  moves: {},
+  skips: {},
+  feedback: {},
+  metrics: {}
+};
+
+// Bouw runtime week-data uit het verse plan + user overrides
+function getWeekView(weekId) {
+  const original = WEEKS[weekId];
+  if (!original) return null;
+  // Diepe kopie van het plan
+  const w = JSON.parse(JSON.stringify(original));
+
+  // Pas skips toe: sessies die compleet uit deze week verdwenen zijn (vervangen door iets anders)
+  if (state.skips) {
+    Object.keys(state.skips).forEach(key => {
+      if (!key.startsWith(weekId + ':')) return;
+      const parts = key.split(':');
+      const origDay = parseInt(parts[1]);
+      const sid = parts.slice(2).join(':');
+      if (!isNaN(origDay) && w.days[origDay]) {
+        w.days[origDay].sessions = w.days[origDay].sessions.filter(s => s !== sid);
+      }
+    });
+  }
+
+  // Pas verplaatsingen toe
+  Object.keys(state.moves).forEach(key => {
+    const parts = key.split(':');
+    if (parts[0] !== weekId) return;
+    const sid = parts.slice(2).join(':');
+    const fromPart = parts[1];
+    const toDay = state.moves[key];
+    if (isNaN(toDay)) return;
+    if (!w.days[toDay]) return;
+
+    if (fromPart === '__import') {
+      // Synthetische import-move: voeg toe aan toDay als hij er nog niet staat
+      // sid bevat dan eigenlijk "type:datum" — maar we hebben de echte sid in parts[2]
+      const realSid = parts[2];
+      // parts is bv ['w4','__import','run_threshold','2026-05-04']
+      if (!w.days[toDay].sessions.includes(realSid)) {
+        w.days[toDay].sessions.push(realSid);
+      }
+    } else {
+      const fromDay = parseInt(fromPart);
+      if (isNaN(fromDay)) return;
+      if (!w.days[fromDay]) return;
+      // Verwijder uit fromDay als hij er nog staat
+      w.days[fromDay].sessions = w.days[fromDay].sessions.filter(s => s !== sid);
+      // Voeg toe aan toDay als hij er nog niet staat
+      if (!w.days[toDay].sessions.includes(sid)) {
+        w.days[toDay].sessions.push(sid);
+      }
+    }
+  });
+
+  // Pas done-markeringen toe per dag
+  w.days.forEach((day, di) => {
+    day.done = day.sessions.filter(sid => state.done[weekId + ':' + di + ':' + sid] === true);
+  });
+
+  return w;
+}
+
+async function loadState() {
+  if (typeof window.storage === 'undefined' || !window.storage.get) return;
+  let result = null;
+  try {
+    result = await window.storage.get('trainingState');
+  } catch(e) {
+    return; // Key bestaat nog niet
+  }
+  if (!result || !result.value) return;
+  try {
+    const saved = JSON.parse(result.value);
+
+    // Nieuwe structuur (done/missed/moves/skips/feedback/metrics)
+    if (saved.done && typeof saved.done === 'object') state.done = saved.done;
+    if (saved.missed && typeof saved.missed === 'object') state.missed = saved.missed;
+    if (saved.moves && typeof saved.moves === 'object') state.moves = saved.moves;
+    if (saved.skips && typeof saved.skips === 'object') state.skips = saved.skips;
+    if (saved.feedback && typeof saved.feedback === 'object') state.feedback = saved.feedback;
+    if (saved.metrics && typeof saved.metrics === 'object') state.metrics = saved.metrics;
+
+    // Migratie van oude structuur (saved.weekData met done-arrays per dag)
+    if (saved.weekData && typeof saved.weekData === 'object') {
+      Object.keys(saved.weekData).forEach(wkId => {
+        const oldWeek = saved.weekData[wkId];
+        if (!oldWeek || !oldWeek.days) return;
+        // Done-markeringen migreren
+        oldWeek.days.forEach((oldDay, di) => {
+          if (oldDay.done && Array.isArray(oldDay.done)) {
+            oldDay.done.forEach(sid => {
+              state.done[wkId + ':' + di + ':' + sid] = true;
+            });
+          }
+          // Verplaatste sessies opsporen: vergelijk met huidig plan
+          const planWeek = WEEKS[wkId];
+          if (planWeek && oldDay.sessions && Array.isArray(oldDay.sessions)) {
+            oldDay.sessions.forEach(sid => {
+              const planDay = planWeek.days[di];
+              if (planDay && !planDay.sessions.includes(sid)) {
+                // sid staat in opgeslagen dag maar niet in het plan → was verplaatst
+                // Zoek in welke dag van het plan hij oorspronkelijk hoort
+                for (let pdi = 0; pdi < planWeek.days.length; pdi++) {
+                  if (planWeek.days[pdi].sessions.includes(sid)) {
+                    state.moves[wkId + ':' + pdi + ':' + sid] = di;
+                    break;
+                  }
+                }
+              }
+            });
+          }
+        });
+      });
+    }
+  } catch(e) {
+    console.warn('loadState parse-fout:', e);
+  }
+}
+
+async function saveState() {
+  if (typeof window.storage === 'undefined' || !window.storage.set) return;
+  try {
+    await window.storage.set('trainingState', JSON.stringify({
+      done: state.done,
+      missed: state.missed,
+      moves: state.moves,
+      skips: state.skips,
+      feedback: state.feedback,
+      metrics: state.metrics
+    }));
+  } catch(e) {
+    console.warn('saveState fout:', e);
+  }
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+let activeWeek = 'w2';
+let dragSessId = null;
+let dragFromDay = null;
+let selectedSess = null;
+let moveMode = null; // {sid, fromDay} of null
+
+function showPage(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(btn) btn.classList.add('active');
+  if(id === 'week') renderWeek(activeWeek);
+  if(id === 'status') renderStatus();
+  if(id === 'seizoen') renderSeason();
+}
+
+function getCurrentWeekId() {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  for (const meta of WEEK_META) {
+    const wkStart = parseDate(meta.start);
+    const wkEnd = new Date(wkStart);
+    wkEnd.setDate(wkStart.getDate() + 6);
+    if (today >= wkStart && today <= wkEnd) {
+      return meta.id;
+    }
+  }
+  // Fallback: als vandaag vóór seizoen → eerste week, na seizoen → laatste week
+  const firstStart = parseDate(WEEK_META[0].start);
+  if (today < firstStart) return WEEK_META[0].id;
+  return WEEK_META[WEEK_META.length - 1].id;
+}
+
+function goToCurrentWeek() {
+  renderWeek(getCurrentWeekId());
+}
+
+function navWeek(dir) {
+  const keys = WEEK_META.map(m => m.id);
+  const i = keys.indexOf(activeWeek);
+  const ni = i + dir;
+  if (ni >= 0 && ni < keys.length) renderWeek(keys[ni]);
+}
+
+async function resetWeek() {
+  if (!confirm('Verschuivingen voor deze week ongedaan maken?\n\nDone-markeringen en feedback blijven behouden.')) return;
+  // Verwijder alle moves voor deze week
+  Object.keys(state.moves).forEach(key => {
+    if (key.startsWith(activeWeek + ':')) {
+      delete state.moves[key];
+    }
+  });
+  await saveState();
+  selectedSess = null;
+  document.getElementById('detailPanel').style.display = 'none';
+  renderWeek(activeWeek);
+}
+
+async function cleanWeek() {
+  const movesToDelete = Object.keys(state.moves).filter(key => key.startsWith(activeWeek + ':'));
+  const skipsToDelete = Object.keys(state.skips || {}).filter(key => key.startsWith(activeWeek + ':'));
+
+  const planSessIds = new Set();
+  const plan = WEEKS[activeWeek];
+  if (plan) {
+    plan.days.forEach(d => d.sessions.forEach(sid => planSessIds.add(sid)));
+  }
+  const orphanDone = Object.keys(state.done).filter(key => {
+    if (!key.startsWith(activeWeek + ':')) return false;
+    const parts = key.split(':');
+    const sid = parts.slice(2).join(':');
+    return !planSessIds.has(sid);
+  });
+
+  const totaal = movesToDelete.length + skipsToDelete.length + orphanDone.length;
+
+  if (totaal === 0) {
+    alert('Deze week is al schoon. Geen verplaatsingen, vervangingen of verweesde markeringen gevonden.');
+    return;
+  }
+
+  movesToDelete.forEach(key => delete state.moves[key]);
+  skipsToDelete.forEach(key => delete state.skips[key]);
+  orphanDone.forEach(key => delete state.done[key]);
+
+  await saveState();
+  selectedSess = null;
+  document.getElementById('detailPanel').style.display = 'none';
+  renderWeek(activeWeek);
+
+  alert('✅ Opgeschoond:\n' +
+    '• ' + movesToDelete.length + ' verplaatsing(en) verwijderd\n' +
+    '• ' + skipsToDelete.length + ' vervanging(en) teruggedraaid\n' +
+    '• ' + orphanDone.length + ' verweesde markering(en) verwijderd');
+}
+
+function showDebug() {
+  const wId = activeWeek;
+  const plan = WEEKS[wId];
+  const view = getWeekView(wId);
+
+  let msg = '=== DEBUG ' + wId + ' ===\n\n';
+  msg += 'PLAN (uit code):\n';
+  plan.days.forEach((d, i) => {
+    msg += '  ' + d.name + ' ' + d.date + ': ' + (d.sessions.length ? d.sessions.join(', ') : 'rust') + '\n';
+  });
+
+  msg += '\nWAT JE ZIET (na moves):\n';
+  view.days.forEach((d, i) => {
+    msg += '  ' + d.name + ' ' + d.date + ': ' + (d.sessions.length ? d.sessions.join(', ') : 'rust') + '\n';
+  });
+
+  msg += '\nMOVES voor deze week:\n';
+  const moves = Object.keys(state.moves).filter(k => k.startsWith(wId + ':'));
+  if (moves.length === 0) msg += '  (geen)\n';
+  else moves.forEach(k => msg += '  ' + k + ' → dag ' + state.moves[k] + '\n');
+
+  msg += '\nDONE voor deze week:\n';
+  const dones = Object.keys(state.done).filter(k => k.startsWith(wId + ':'));
+  if (dones.length === 0) msg += '  (geen)\n';
+  else dones.forEach(k => msg += '  ' + k + '\n');
+
+  alert(msg);
+  console.log(msg);
+}
+
+function renderWeek(key) {
+  activeWeek = key;
+  const w = getWeekView(key);
+  const meta = WEEK_META.find(m => m.id === key);
+  if (!w || !meta) return;
+
+  // Week info bar
+  document.getElementById('weekInfo').innerHTML = `
+    <div>
+      <div class="week-info-title">${meta.label}</div>
+    </div>
+  `;
+
+  // Prev/next buttons
+  const keys = WEEK_META.map(m => m.id);
+  const i = keys.indexOf(activeWeek);
+  document.getElementById('prevWeekBtn').disabled = (i === 0);
+  document.getElementById('nextWeekBtn').disabled = (i === keys.length - 1);
+
+  // Move-hint
+  let moveHintHtml = '';
+  if (moveMode) {
+    const sess = SESSIONS[moveMode.sid];
+    moveHintHtml = `<div class="move-hint">
+      <span>📌 Tik op een dag om <strong>${sess ? sess.label : moveMode.sid}</strong> te verplaatsen</span>
+      <button class="move-cancel" onclick="cancelMove()">Annuleer</button>
+    </div>`;
+  }
+
+  // Week grid
+  const grid = document.getElementById('weekGrid');
+  grid.innerHTML = moveHintHtml + w.days.map((day, di) => {
+    const pillsHtml = day.sessions.map(sid => {
+      const sess = SESSIONS[sid];
+      if(!sess) return '';
+      const sessKey = activeWeek + ':' + di + ':' + sid;
+      const isDone = day.done.includes(sid);
+      const isMissed = state.missed[sessKey] === true;
+      const isMoving = moveMode && moveMode.sid === sid && moveMode.fromDay === di;
+      const hasFb = !!(state.feedback[sessKey] && state.feedback[sessKey].text);
+      const displayDur = getDisplayDur(activeWeek, di, sid);
+      const stateClass = isMissed ? ' missed' : (isDone ? ' done' : '');
+      return `<div class="session-pill p-${sess.type}${stateClass}${isMoving?' moving':''}"
+        draggable="true"
+        data-sid="${sid}"
+        data-day="${di}"
+        onclick="selectSess('${sid}',${di})"
+        ondragstart="onDragStart(event,'${sid}',${di})"
+      >
+        ${hasFb ? '<span class="pill-fb" title="Heeft feedback">📝</span>' : ''}
+        ${isMissed ? '<span class="pill-missed" title="Gemist">🚫</span>' : (isDone ? '<span class="pill-done">✅</span>' : '')}
+        <div class="pill-name">${sess.label}</div>
+        <div class="pill-meta">${displayDur}</div>
+      </div>`;
+    }).join('');
+
+    const isMoveTarget = moveMode && moveMode.fromDay !== di;
+    return `<div class="day-col${isMoveTarget ? ' move-target' : ''}"
+      ${isMoveTarget ? `onclick="completeMove(${di})"` : ''}
+      ondragover="onDragOver(event)"
+      ondragleave="onDragLeave(event)"
+      ondrop="onDrop(event,${di})"
+    >
+      <div class="day-col-header">
+        <div class="day-col-name">${day.name}</div>
+        <div class="day-col-date">${day.date}</div>
+      </div>
+      <div class="day-col-body">
+        ${pillsHtml || `<div class="empty-day">Rust</div>`}
+      </div>
+    </div>`;
+  }).join('');
+
+  // Hide detail panel bij week-wissel tenzij session nog in deze week zit
+  if (selectedSess) {
+    const d = w.days[selectedSess.di];
+    if (d && d.sessions.includes(selectedSess.sid)) {
+      showDetail(selectedSess.sid, selectedSess.di);
+    } else {
+      document.getElementById('detailPanel').style.display = 'none';
+      selectedSess = null;
+    }
+  }
+}
+
+function selectSess(sid, di) {
+  selectedSess = {sid, di};
+  showDetail(sid, di);
+}
+
+// Format minuten naar "Xu Ymin" of "Y min"
+function formatDuration(minutes) {
+  if (typeof minutes !== 'number' || minutes <= 0) return '';
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes - h * 60);
+  if (h === 0) return m + ' min';
+  if (m === 0) return h + 'u';
+  return h + 'u ' + m + 'min';
+}
+
+// Geeft de te tonen duur voor een sessie: werkelijke duur uit metrics als die er is, anders sessie-default
+function getDisplayDur(weekId, dayIndex, sid) {
+  const key = weekId + ':' + dayIndex + ':' + sid;
+  const m = state.metrics[key];
+  if (m && typeof m.duur_min === 'number' && m.duur_min > 0) {
+    return formatDuration(m.duur_min);
+  }
+  return SESSIONS[sid] ? SESSIONS[sid].dur : '';
+}
+
+function renderMetrics(metrics) {
+  if (!metrics || typeof metrics !== 'object') return '';
+  const fields = [
+    { key:'duur_min', label:'Duur', unit:'min' },
+    { key:'afstand_km', label:'Afstand', unit:'km' },
+    { key:'pace_gem', label:'Pace', unit:'' },
+    { key:'rpe', label:'RPE', unit:'/10' },
+    { key:'hr_gem', label:'HR gem', unit:'bpm' },
+    { key:'hr_max', label:'HR max', unit:'bpm' },
+    { key:'cadans_gem', label:'Cadans', unit:'' },
+    { key:'vermogen_gem_w', label:'Vermogen', unit:'W' },
+    { key:'vermogen_norm_w', label:'NP', unit:'W' },
+    { key:'slagafstand_cm', label:'Slagafstand', unit:'cm' },
+    { key:'slagtempo_spm', label:'Slagtempo', unit:'spm' },
+    { key:'tss', label:'TSS', unit:'' },
+    { key:'calorien', label:'Calorieën', unit:'kcal' },
+  ];
+  const cells = fields
+    .filter(f => metrics[f.key] !== undefined && metrics[f.key] !== null && metrics[f.key] !== 0)
+    .map(f => `<div class="metric-cell">
+      <div class="metric-label">${f.label}</div>
+      <div class="metric-value">${metrics[f.key]}<span class="metric-unit">${f.unit}</span></div>
+    </div>`).join('');
+  if (!cells) return '';
+  return '<div class="metrics-grid">' + cells + '</div>';
+}
+
+function showDetail(sid, di) {
+  const sess = SESSIONS[sid];
+  if(!sess) return;
+  const w = getWeekView(activeWeek);
+  const day = w.days[di];
+  if(!day) return;
+  const isDone = day.done.includes(sid);
+  const panel = document.getElementById('detailPanel');
+  panel.style.display = 'block';
+
+  const stepsHtml = sess.steps.map(group => {
+    const itemsHtml = group.items.map(item => `
+      <div class="step ${item.z}">
+        <div class="step-row"><span class="step-name">${item.n}</span><span class="step-dur">${item.d}</span></div>
+        <div class="step-metric">${item.m}</div>
+        ${item.note ? `<div class="step-note">${item.note}</div>` : ''}
+      </div>`).join('');
+    return (group.sess ? `<div class="sess-lbl">${group.sess}</div>` : '') + itemsHtml;
+  }).join('<div class="divider-line"></div>');
+
+  const fbKey = activeWeek + ':' + di + ':' + sid;
+  const fbEntry = state.feedback[fbKey];
+  const hasFb = !!(fbEntry && fbEntry.text);
+  const metricsHtml = renderMetrics(state.metrics[fbKey]);
+  const displayDur = getDisplayDur(activeWeek, di, sid);
+  const fbHtml = hasFb ? `
+    <div class="feedback-display">
+      <div class="feedback-display-label">📝 Feedback${fbEntry.updatedAt ? ' · ' + new Date(fbEntry.updatedAt).toLocaleDateString('nl-NL') : ''}</div>
+      ${escapeHtml(fbEntry.text)}
+    </div>` : '';
+
+  panel.innerHTML = `
+    <div class="detail-title">${sess.title}</div>
+    <div class="detail-sub">${day.name} ${day.date} · ${displayDur}${displayDur !== sess.dur ? ' <span style="color:#7F77DD;font-size:11px">(werkelijk · plan: ' + sess.dur + ')</span>' : ''}</div>
+    ${metricsHtml}
+    ${fbHtml}
+    ${stepsHtml}
+    <button class="mark-done-btn" onclick="toggleDone('${sid}',${di})">
+      ${isDone ? '↩ Markeer als niet gedaan' : '✅ Markeer als gedaan'}
+    </button>
+    <button class="move-btn" onclick="startMove('${sid}',${di})">
+      📌 Verplaats naar andere dag
+    </button>
+    <button class="feedback-btn${hasFb ? ' has-feedback' : ''}" onclick="openFeedback('${sid}',${di})">
+      📝 ${hasFb ? 'Bewerk feedback' : 'Feedback toevoegen'}
+    </button>
+    <button class="mark-done-btn" onclick="openWorkout('${sid}',${di})" style="background:#FAEEDA;border-color:#EF9F27;color:#854F0B">
+      🏃 Garmin workout
+    </button>`;
+}
+
+function escapeHtml(s) {
+  if (typeof s !== 'string') return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function startMove(sid, di) {
+  moveMode = { sid: sid, fromDay: di };
+  document.getElementById('detailPanel').style.display = 'none';
+  selectedSess = null;
+  renderWeek(activeWeek);
+  // Scroll naar boven zodat de hint zichtbaar is
+  window.scrollTo({ top: document.getElementById('weekGrid').offsetTop - 100, behavior: 'smooth' });
+}
+
+function cancelMove() {
+  moveMode = null;
+  renderWeek(activeWeek);
+}
+
+async function completeMove(toDay) {
+  if (!moveMode) return;
+  const sid = moveMode.sid;
+  const fromDay = moveMode.fromDay;
+  if (toDay === fromDay) { moveMode = null; renderWeek(activeWeek); return; }
+
+  applyMove(sid, fromDay, toDay);
+  moveMode = null;
+  selectedSess = { sid: sid, di: toDay };
+  await saveState();
+  renderWeek(activeWeek);
+}
+
+// ============================================================
+// FEEDBACK MODAL
+// ============================================================
+let currentFb = null; // { sid, di, key }
+
+function openFeedback(sid, di) {
+  const sess = SESSIONS[sid];
+  const w = getWeekView(activeWeek);
+  const day = w.days[di];
+  if (!sess || !day) return;
+
+  const key = activeWeek + ':' + di + ':' + sid;
+  currentFb = { sid: sid, di: di, key: key };
+
+  const existing = state.feedback[key];
+  document.getElementById('fbTitle').textContent = 'Feedback — ' + sess.label;
+  document.getElementById('fbSub').textContent = day.name + ' ' + day.date + ' · ' + sess.title;
+  document.getElementById('fbText').value = existing ? existing.text : '';
+  document.getElementById('fbMeta').textContent = existing && existing.updatedAt
+    ? 'Laatst bijgewerkt: ' + new Date(existing.updatedAt).toLocaleString('nl-NL')
+    : '';
+  document.getElementById('fbDelete').style.display = existing ? 'inline-block' : 'none';
+
+  document.getElementById('fbModal').classList.add('active');
+  setTimeout(function() { document.getElementById('fbText').focus(); }, 50);
+}
+
+function closeFeedback() {
+  document.getElementById('fbModal').classList.remove('active');
+  currentFb = null;
+}
+
+function onModalBgClick(e) {
+  if (e.target.id === 'fbModal') closeFeedback();
+}
+
+async function saveFeedback() {
+  if (!currentFb) return;
+  const text = document.getElementById('fbText').value.trim();
+  if (!text) {
+    // Lege opslag = verwijderen
+    delete state.feedback[currentFb.key];
+  } else {
+    state.feedback[currentFb.key] = {
+      text: text,
+      updatedAt: new Date().toISOString()
+    };
+  }
+  await saveState();
+  const sid = currentFb.sid, di = currentFb.di;
+  closeFeedback();
+  renderWeek(activeWeek);
+  showDetail(sid, di);
+}
+
+async function deleteFeedback() {
+  if (!currentFb) return;
+  if (!confirm('Feedback verwijderen?')) return;
+  delete state.feedback[currentFb.key];
+  await saveState();
+  const sid = currentFb.sid, di = currentFb.di;
+  closeFeedback();
+  renderWeek(activeWeek);
+  showDetail(sid, di);
+}
+
+// ============================================================
+// GARMIN WORKOUT EXPORT
+// ============================================================
+let currentWorkout = null; // { sid, di, sess, dayLabel, steps: [{...}], discipline }
+
+function openWorkout(sid, di) {
+  const sess = SESSIONS[sid];
+  const w = getWeekView(activeWeek);
+  const day = w.days[di];
+  if (!sess || !day) return;
+
+  const dayLabel = day.name + ' ' + day.date;
+  const steps = sessToWorkoutSteps(sess);
+  currentWorkout = { sid, di, sess, dayLabel, steps, discipline: sess.type };
+
+  document.getElementById('workoutSub').textContent = sess.title + ' · ' + dayLabel;
+  document.getElementById('workoutText').value = workoutStepsToText(sess, dayLabel, steps);
+  document.getElementById('workoutMsg').textContent = '';
+  document.getElementById('workoutModal').classList.add('active');
+}
+
+function closeWorkout() {
+  document.getElementById('workoutModal').classList.remove('active');
+  currentWorkout = null;
+}
+
+function onWorkoutBgClick(e) {
+  if (e.target.id === 'workoutModal') closeWorkout();
+}
+
+// Parse een sessie.steps.items naar een gestructureerde workout
+// Detecteert: warmup / interval (X×) / recovery / cooldown / steady
+function sessToWorkoutSteps(sess) {
+  const steps = [];
+  if (!sess.steps || !sess.steps[0] || !sess.steps[0].items) return steps;
+
+  sess.steps[0].items.forEach((item, idx) => {
+    const nameLower = (item.n || '').toLowerCase();
+    const durStr = item.d || '';
+    const metricStr = item.m || '';
+
+    // Bepaal het soort step
+    let kind = 'steady';
+    if (/warm|warming/.test(nameLower)) kind = 'warmup';
+    else if (/cool|uitrij|cooling|uitzwem|uitloop/.test(nameLower)) kind = 'cooldown';
+    else if (/herstel|recovery|hersteldraf/.test(nameLower)) kind = 'recovery';
+    else if (/×|x\s|interval|drempel|tempo blok|piek|set|sighting|brick/.test(nameLower)) kind = 'interval';
+
+    // Detecteer herhaling: "4× 3 min" of "3× 8 min" of "5×200m"
+    let repeats = 1;
+    const repMatch = durStr.match(/(\d+)\s*[×x]/);
+    if (repMatch) repeats = parseInt(repMatch[1]);
+
+    // Duur in minuten of afstand
+    const durData = parseDur(durStr);
+    // Pace/HR/vermogen targets uit metric-string
+    const targets = parseMetric(metricStr);
+
+    steps.push({
+      name: item.n,
+      kind: kind,
+      duration: durData, // {minutes, distance_m}
+      targets: targets,  // {pace, hr, watts}
+      note: item.note || '',
+      repeats: repeats
+    });
+  });
+
+  // Recovery na een interval-step koppelen
+  // We laten de structuur lineair voor leesbaarheid; Garmin Connect kan repeats handmatig krijgen via 'Herhaal X keer'
+  return steps;
+}
+
+function parseDur(s) {
+  if (!s) return { minutes: 0, distance_m: 0 };
+  // Voorbeelden: "10 min", "1u 30 min", "4×", "4× 3 min", "200m", "5×200m"
+  let minutes = 0;
+  let distance_m = 0;
+
+  const hMatch = s.match(/(\d+)\s*u/);
+  if (hMatch) minutes += parseInt(hMatch[1]) * 60;
+  const mMatch = s.match(/(\d+)\s*min/);
+  if (mMatch) minutes += parseInt(mMatch[1]);
+  const secMatch = s.match(/(\d+)\s*sec/);
+  if (secMatch) minutes += parseInt(secMatch[1]) / 60;
+  const distMatch = s.match(/(\d+)\s*m(?!in)/);
+  if (distMatch) distance_m = parseInt(distMatch[1]);
+
+  // Voor "3 min drempel" als label binnen "4×": parse alleen het min-deel
+  return { minutes, distance_m };
+}
+
+function parseMetric(m) {
+  if (!m) return {};
+  const t = {};
+  // Pace: 4:35-4:45/km of 1:50-2:00/100m
+  const paceMatch = m.match(/(\d+:\d+)[–-](\d+:\d+)\/(km|100m)/);
+  if (paceMatch) t.pace = paceMatch[1] + '-' + paceMatch[2] + '/' + paceMatch[3];
+  else {
+    const singlePace = m.match(/(\d+:\d+)\/(km|100m)/);
+    if (singlePace) t.pace = singlePace[1] + '/' + singlePace[2];
+  }
+  // HR: 163-173 of HR 134-150
+  const hrMatch = m.match(/HR\s*(\d+)[–-](\d+)|(\d+)[–-](\d+)\s*bpm/);
+  if (hrMatch) {
+    const a = hrMatch[1] || hrMatch[3];
+    const b = hrMatch[2] || hrMatch[4];
+    if (a && b) t.hr = a + '-' + b;
+  }
+  // Vermogen: 178-213W of 213W
+  const wMatch = m.match(/(\d+)[–-](\d+)\s*W/);
+  if (wMatch) t.watts = wMatch[1] + '-' + wMatch[2] + 'W';
+  // RPE
+  const rpeMatch = m.match(/RPE\s*(\d+)[–-]?(\d+)?/);
+  if (rpeMatch) t.rpe = rpeMatch[2] ? 'RPE ' + rpeMatch[1] + '-' + rpeMatch[2] : 'RPE ' + rpeMatch[1];
+
+  return t;
+}
+
+function workoutStepsToText(sess, dayLabel, steps) {
+  const lines = [];
+  lines.push('=== ' + sess.title + ' ===');
+  lines.push(dayLabel + ' · totaal ±' + sess.dur);
+  lines.push('');
+
+  let stepNum = 1;
+  steps.forEach(s => {
+    const tgts = [];
+    if (s.targets.pace) tgts.push('pace ' + s.targets.pace);
+    if (s.targets.hr) tgts.push('HR ' + s.targets.hr);
+    if (s.targets.watts) tgts.push(s.targets.watts);
+    if (s.targets.rpe) tgts.push(s.targets.rpe);
+
+    const durTxt = s.duration.minutes > 0
+      ? formatDuration(s.duration.minutes)
+      : (s.duration.distance_m > 0 ? s.duration.distance_m + 'm' : '');
+
+    const repeatTxt = s.repeats > 1 ? ' (×' + s.repeats + ')' : '';
+    const kindLabel = {
+      warmup: 'Warm-up',
+      cooldown: 'Cool-down',
+      recovery: 'Recovery',
+      interval: 'Interval',
+      steady: 'Steady'
+    }[s.kind] || 'Step';
+
+    lines.push(stepNum + '. [' + kindLabel + '] ' + s.name + ' — ' + durTxt + repeatTxt);
+    if (tgts.length) lines.push('   → ' + tgts.join(' · '));
+    if (s.note) lines.push('   ℹ ' + s.note);
+    lines.push('');
+    stepNum++;
+  });
+
+  lines.push('---');
+  lines.push('In Garmin Connect:');
+  lines.push('1. Trainingen → Maak training → ' + disciplineLabel(sess.type));
+  lines.push('2. Voeg stappen toe in volgorde');
+  lines.push('3. Voor intervallen: gebruik "Herhaal" stap met de gewenste herhalingen');
+  lines.push('4. Sla op en stuur naar je horloge');
+
+  return lines.join('\n');
+}
+
+function disciplineLabel(t) {
+  return { swim: 'Zwemmen', bike: 'Fietsen', run: 'Hardlopen', str: 'Kracht', event: 'Andere', race: 'Andere' }[t] || 'Hardlopen';
+}
+
+async function copyWorkoutText() {
+  const text = document.getElementById('workoutText').value;
+  try {
+    await navigator.clipboard.writeText(text);
+    document.getElementById('workoutMsg').textContent = '✅ Gekopieerd naar klembord';
+    document.getElementById('workoutMsg').style.color = '#0F6E56';
+  } catch(e) {
+    // Fallback: select textarea
+    document.getElementById('workoutText').select();
+    document.execCommand('copy');
+    document.getElementById('workoutMsg').textContent = '✅ Gekopieerd (via fallback)';
+    document.getElementById('workoutMsg').style.color = '#0F6E56';
+  }
+}
+
+// ============================================================
+// EXPERIMENTELE .FIT EXPORT
+// ============================================================
+// Genereert een minimale geldige FIT workout file
+// Gebaseerd op FIT SDK spec (vereenvoudigd)
+function downloadWorkoutFit() {
+  if (!currentWorkout) return;
+  try {
+    const fitBytes = buildFitWorkout(currentWorkout);
+    const blob = new Blob([fitBytes], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeName = currentWorkout.sess.label.replace(/[^a-z0-9]+/gi, '_') + '_' + currentWorkout.dayLabel.replace(/\s+/g, '_');
+    a.href = url;
+    a.download = safeName + '.fit';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    document.getElementById('workoutMsg').textContent = '⚡ .FIT bestand gedownload — probeer in Garmin Connect (Trainingen → Importeer)';
+    document.getElementById('workoutMsg').style.color = '#854F0B';
+  } catch(e) {
+    console.error('FIT export error:', e);
+    document.getElementById('workoutMsg').textContent = '❌ FIT export mislukt: ' + e.message + '. Gebruik de tekst-export.';
+    document.getElementById('workoutMsg').style.color = '#d32f2f';
+  }
+}
+
+// Vereenvoudigde FIT workout builder
+// FIT-formaat: header (14 bytes) + records + CRC (2 bytes)
+function buildFitWorkout(workout) {
+  // Output buffer building
+  const chunks = [];
+
+  // Definition + data messages for FILE_ID (msg type 0)
+  // Local message type 0 = file_id
+  // Define file_id message
+  const fileIdDef = new Uint8Array([
+    0x40, // header: definition message, local type 0
+    0x00, // reserved
+    0x00, // little endian
+    0x00, 0x00, // global message number 0 (file_id)
+    0x05, // 5 fields
+    // field: type (0), 1 byte, type 0x00 (enum)
+    0x00, 0x01, 0x00,
+    // field: manufacturer (1), 2 bytes, type 0x84 (uint16)
+    0x01, 0x02, 0x84,
+    // field: product (2), 2 bytes, type 0x84
+    0x02, 0x02, 0x84,
+    // field: serial_number (3), 4 bytes, type 0x8c (uint32z)
+    0x03, 0x04, 0x8c,
+    // field: time_created (4), 4 bytes, type 0x86 (uint32)
+    0x04, 0x04, 0x86,
+  ]);
+  chunks.push(fileIdDef);
+
+  // file_id data: type=5 (workout), manufacturer=255 (development), product=0, serial=0, time_created=now
+  // FIT time = seconds since UTC 00:00 Dec 31 1989
+  const fitEpoch = Date.UTC(1989, 11, 31) / 1000;
+  const nowFit = Math.floor(Date.now() / 1000) - fitEpoch;
+  const fileIdData = new Uint8Array([
+    0x00, // header: data message, local type 0
+    0x05, // type = workout
+    0xff, 0x00, // manufacturer = 255 (dev/garmin defaults to garmin)
+    0x00, 0x00, // product
+    0x00, 0x00, 0x00, 0x00, // serial
+    nowFit & 0xff, (nowFit >> 8) & 0xff, (nowFit >> 16) & 0xff, (nowFit >> 24) & 0xff,
+  ]);
+  chunks.push(fileIdData);
+
+  // workout message definition (global 26)
+  // Fields: sport (4), num_valid_steps (6), wkt_name (8) - 16 bytes string
+  const wktDef = new Uint8Array([
+    0x41, // definition, local type 1
+    0x00,
+    0x00, // little endian
+    0x1a, 0x00, // global message 26
+    0x03,
+    // sport (4): 1 byte, enum (0x00)
+    0x04, 0x01, 0x00,
+    // num_valid_steps (6): 2 bytes uint16 (0x84)
+    0x06, 0x02, 0x84,
+    // wkt_name (8): 16 bytes string (0x07)
+    0x08, 0x10, 0x07,
+  ]);
+  chunks.push(wktDef);
+
+  // sport: run=1, bike=2, swim=5, training=10
+  const sportMap = { run: 1, bike: 2, swim: 5, str: 10 };
+  const sport = sportMap[workout.discipline] || 1;
+  const workoutSteps = flattenSteps(workout.steps);
+  const numSteps = workoutSteps.length;
+
+  // Workout name (16 bytes, null-padded)
+  const wktName = workout.sess.label.substring(0, 15);
+  const nameBytes = new Uint8Array(16);
+  for (let i = 0; i < wktName.length; i++) nameBytes[i] = wktName.charCodeAt(i) & 0x7f;
+
+  const wktData = new Uint8Array(1 + 1 + 2 + 16);
+  wktData[0] = 0x01; // data, local type 1
+  wktData[1] = sport;
+  wktData[2] = numSteps & 0xff;
+  wktData[3] = (numSteps >> 8) & 0xff;
+  for (let i = 0; i < 16; i++) wktData[4 + i] = nameBytes[i];
+  chunks.push(wktData);
+
+  // workout_step message definition (global 27)
+  // Velden: message_index (254), duration_type (1), duration_value (2), target_type (3),
+  //         intensity (7), duration_step (4=time, 5=distance)
+  const stepDef = new Uint8Array([
+    0x42, // definition, local type 2
+    0x00,
+    0x00,
+    0x1b, 0x00, // global 27
+    0x05,
+    // message_index (254): 2 bytes uint16
+    0xfe, 0x02, 0x84,
+    // duration_type (1): 1 byte enum
+    0x01, 0x01, 0x00,
+    // duration_value (2): 4 bytes uint32
+    0x02, 0x04, 0x86,
+    // target_type (3): 1 byte enum
+    0x03, 0x01, 0x00,
+    // intensity (7): 1 byte enum
+    0x07, 0x01, 0x00,
+  ]);
+  chunks.push(stepDef);
+
+  // Voor elke step een data record
+  workoutSteps.forEach((s, idx) => {
+    // duration_type 0=time, 1=distance, 5=open, 6=repeat_until_steps_cmplt
+    // intensity: 0=active, 1=rest, 2=warmup, 3=cooldown
+    let durType = 0, durValue = 0;
+    if (s.duration.minutes > 0) {
+      durType = 0;
+      durValue = Math.round(s.duration.minutes * 60 * 1000); // ms
+    } else if (s.duration.distance_m > 0) {
+      durType = 1;
+      durValue = Math.round(s.duration.distance_m * 100); // cm
+    } else {
+      durType = 5; // open
+    }
+
+    let intensity = 0;
+    if (s.kind === 'warmup') intensity = 2;
+    else if (s.kind === 'cooldown') intensity = 3;
+    else if (s.kind === 'recovery') intensity = 1;
+
+    const stepData = new Uint8Array(1 + 2 + 1 + 4 + 1 + 1);
+    stepData[0] = 0x02; // data, local type 2
+    stepData[1] = idx & 0xff;
+    stepData[2] = (idx >> 8) & 0xff;
+    stepData[3] = durType;
+    stepData[4] = durValue & 0xff;
+    stepData[5] = (durValue >> 8) & 0xff;
+    stepData[6] = (durValue >> 16) & 0xff;
+    stepData[7] = (durValue >> 24) & 0xff;
+    stepData[8] = 0; // target_type 0 = open (geen specifieke target)
+    stepData[9] = intensity;
+    chunks.push(stepData);
+  });
+
+  // Combineer alle data records
+  const recordsBytes = concatChunks(chunks);
+  const dataSize = recordsBytes.length;
+
+  // Header (14 bytes)
+  const header = new Uint8Array(14);
+  header[0] = 14; // header size
+  header[1] = 0x10; // protocol version 1.0
+  header[2] = 0x6c; header[3] = 0x08; // profile version 2156 (= 21.56)
+  // data size (4 bytes little endian)
+  header[4] = dataSize & 0xff;
+  header[5] = (dataSize >> 8) & 0xff;
+  header[6] = (dataSize >> 16) & 0xff;
+  header[7] = (dataSize >> 24) & 0xff;
+  // .FIT signature
+  header[8] = '.'.charCodeAt(0);
+  header[9] = 'F'.charCodeAt(0);
+  header[10] = 'I'.charCodeAt(0);
+  header[11] = 'T'.charCodeAt(0);
+  // Header CRC (2 bytes) — we laten op 0
+  header[12] = 0; header[13] = 0;
+
+  // Combineer header + records
+  const withoutCrc = new Uint8Array(14 + dataSize);
+  withoutCrc.set(header, 0);
+  withoutCrc.set(recordsBytes, 14);
+
+  // CRC-16 (FIT spec: CRC-16/MCRF4XX equivalent)
+  const crc = computeFitCrc(withoutCrc, 0, withoutCrc.length);
+  const result = new Uint8Array(withoutCrc.length + 2);
+  result.set(withoutCrc, 0);
+  result[withoutCrc.length] = crc & 0xff;
+  result[withoutCrc.length + 1] = (crc >> 8) & 0xff;
+
+  return result;
+}
+
+function flattenSteps(steps) {
+  // Repeats uitvouwen: een step met repeats=4 wordt 4 losse steps
+  const out = [];
+  steps.forEach(s => {
+    const r = Math.max(1, s.repeats || 1);
+    for (let i = 0; i < r; i++) {
+      out.push(s);
+    }
+  });
+  return out;
+}
+
+function concatChunks(chunks) {
+  let total = 0;
+  chunks.forEach(c => total += c.length);
+  const out = new Uint8Array(total);
+  let off = 0;
+  chunks.forEach(c => { out.set(c, off); off += c.length; });
+  return out;
+}
+
+function computeFitCrc(data, start, end) {
+  const crcTable = [
+    0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401,
+    0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400
+  ];
+  let crc = 0;
+  for (let i = start; i < end; i++) {
+    let b = data[i];
+    let tmp = crcTable[crc & 0xF];
+    crc = (crc >> 4) & 0x0FFF;
+    crc = crc ^ tmp ^ crcTable[b & 0xF];
+    tmp = crcTable[crc & 0xF];
+    crc = (crc >> 4) & 0x0FFF;
+    crc = crc ^ tmp ^ crcTable[(b >> 4) & 0xF];
+  }
+  return crc;
+}
+
+// ============================================================
+// IMPORT MODAL — JSON van trainingsanalyse importeren
+// ============================================================
+function openImport() {
+  document.getElementById('importText').value = '';
+  document.getElementById('importMeta').textContent = 'Tip: één object of een array van meerdere objecten kan beide';
+  document.getElementById('importMeta').style.color = '#888';
+  document.getElementById('importModal').classList.add('active');
+  setTimeout(function() { document.getElementById('importText').focus(); }, 50);
+}
+
+function closeImport() {
+  document.getElementById('importModal').classList.remove('active');
+}
+
+function onImportBgClick(e) {
+  if (e.target.id === 'importModal') closeImport();
+}
+
+// Vind weekId + dagindex bij een ISO-datum
+function findWeekAndDay(isoDate) {
+  for (const meta of WEEK_META) {
+    const wkStart = parseDate(meta.start);
+    for (let di = 0; di < 7; di++) {
+      const d = new Date(wkStart);
+      d.setDate(wkStart.getDate() + di);
+      if (formatIso(d) === isoDate) {
+        return { weekId: meta.id, dayIndex: di };
+      }
+    }
+  }
+  return null;
+}
+
+// Vind welke dag de sessie nu staat (rekening houdend met moves)
+function findCurrentDay(weekId, sid, originalDay) {
+  // Check of er een move is voor deze sessie
+  const moveKey = weekId + ':' + originalDay + ':' + sid;
+  if (state.moves[moveKey] !== undefined) {
+    return state.moves[moveKey];
+  }
+  return originalDay;
+}
+
+async function processImport() {
+  const raw = document.getElementById('importText').value.trim();
+  if (!raw) {
+    setImportMsg('Plak eerst een JSON-blok', 'err');
+    return;
+  }
+
+  // Probeer ```json ... ``` te strippen als het er omheen staat
+  let cleaned = raw;
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch(e) {
+    setImportMsg('Ongeldig JSON: ' + e.message, 'err');
+    return;
+  }
+
+  // Normaliseer naar array
+  const items = Array.isArray(parsed) ? parsed : [parsed];
+
+  const results = [];
+  for (const item of items) {
+    const r = await importSingle(item);
+    results.push(r);
+  }
+
+  await saveState();
+
+  const ok = results.filter(r => r.success).length;
+  const fail = results.filter(r => !r.success);
+
+  let msg = '✅ ' + ok + ' sessie(s) geïmporteerd';
+  if (fail.length > 0) {
+    msg += ' · ❌ ' + fail.length + ' fout: ' + fail.map(f => f.error).join('; ');
+    setImportMsg(msg, 'err');
+  } else {
+    setImportMsg(msg, 'ok');
+    // Navigeer naar de week van het eerste geïmporteerde item
+    const firstOk = results.find(r => r.success);
+    if (firstOk && firstOk.weekId) {
+      setTimeout(function() {
+        renderWeek(firstOk.weekId);
+        closeImport();
+      }, 800);
+    }
+  }
+}
+
+// Mismatch-modal state
+let mismatchResolver = null;
+
+function askMismatch(dayLabel, plannedLabel, actualLabel) {
+  return new Promise(function(resolve) {
+    document.getElementById('mismatchSub').textContent = dayLabel;
+    document.getElementById('mismatchBody').innerHTML =
+      '<div style="margin-bottom:10px"><strong>Gepland:</strong> ' + escapeHtml(plannedLabel) + '</div>' +
+      '<div style="margin-bottom:10px"><strong>Daadwerkelijk gedaan:</strong> ' + escapeHtml(actualLabel) + '</div>' +
+      '<div style="color:#666;font-size:12px;margin-top:8px">Bij vervangen wordt de geplande sessie uit deze week verwijderd en vervangen door wat je daadwerkelijk hebt gedaan.</div>';
+    document.getElementById('mismatchModal').classList.add('active');
+    mismatchResolver = resolve;
+  });
+}
+
+function resolveMismatch(value) {
+  document.getElementById('mismatchModal').classList.remove('active');
+  if (mismatchResolver) {
+    mismatchResolver(value);
+    mismatchResolver = null;
+  }
+}
+
+async function importSingle(item) {
+  if (!item || typeof item !== 'object') {
+    return { success: false, error: 'Geen object' };
+  }
+  if (!item.datum || !item.sessie_type) {
+    return { success: false, error: 'datum of sessie_type ontbreekt' };
+  }
+  if (!SESSIONS[item.sessie_type]) {
+    return { success: false, error: 'onbekende sessie_type "' + item.sessie_type + '"' };
+  }
+
+  const wd = findWeekAndDay(item.datum);
+  if (!wd) {
+    return { success: false, error: 'datum ' + item.datum + ' valt buiten het seizoen' };
+  }
+
+  // Bekijk wat er nu (na moves) op deze dag staat
+  const currentView = getWeekView(wd.weekId);
+  const currentSessionsOnDay = currentView.days[wd.dayIndex].sessions;
+  const planWeek = WEEKS[wd.weekId];
+
+  // Geval 1: sessie staat al op deze dag → niets te doen qua plan
+  if (currentSessionsOnDay.includes(item.sessie_type)) {
+    return await applyImportData(wd.weekId, wd.dayIndex, item, 'matched');
+  }
+
+  // Geval 2: sessie zit elders in plan → sessie verplaatsen naar deze dag
+  let origDay = -1;
+  for (let di = 0; di < planWeek.days.length; di++) {
+    if (planWeek.days[di].sessions.includes(item.sessie_type)) {
+      origDay = di;
+      break;
+    }
+  }
+  if (origDay >= 0) {
+    state.moves[wd.weekId + ':' + origDay + ':' + item.sessie_type] = wd.dayIndex;
+    return await applyImportData(wd.weekId, wd.dayIndex, item, 'moved');
+  }
+
+  // Geval 3: mismatch — sessie is van een ander type dan wat op die dag stond
+  // Dezelfde discipline (loop/zwem/fiets/kracht)? Bevestig vervanging
+  const newSessType = SESSIONS[item.sessie_type].type;
+  const sameDisciplineSession = currentSessionsOnDay.find(sid => SESSIONS[sid] && SESSIONS[sid].type === newSessType);
+
+  if (sameDisciplineSession) {
+    const replaceLabel = SESSIONS[sameDisciplineSession].label;
+    const newLabel = SESSIONS[item.sessie_type].label;
+    const dayLabel = currentView.days[wd.dayIndex].name + ' ' + currentView.days[wd.dayIndex].date;
+    const ok = await askMismatch(dayLabel, replaceLabel, newLabel);
+    if (!ok) {
+      return { success: false, error: 'mismatch ' + item.sessie_type + ' op ' + item.datum + ' (overgeslagen)' };
+    }
+    // Vervang: verwijder de oude sessie via een speciale "remove"-move, en voeg de nieuwe toe
+    // We gebruiken een hidden marker: verplaats de oude naar dag -1 (verwijderd)
+    // Maar dag -1 bestaat niet; in plaats daarvan voegen we een speciale skip-key toe
+    state.skips = state.skips || {};
+    // Bepaal originele dag van de te vervangen sessie
+    let oldOrigDay = -1;
+    for (let di = 0; di < planWeek.days.length; di++) {
+      if (planWeek.days[di].sessions.includes(sameDisciplineSession)) {
+        oldOrigDay = di;
+        break;
+      }
+    }
+    // Skip de oude sessie helemaal in deze week
+    state.skips[wd.weekId + ':' + (oldOrigDay >= 0 ? oldOrigDay : wd.dayIndex) + ':' + sameDisciplineSession] = true;
+    // Zorg dat geen oude move 'm nog ergens anders zet
+    delete state.moves[wd.weekId + ':' + (oldOrigDay >= 0 ? oldOrigDay : wd.dayIndex) + ':' + sameDisciplineSession];
+    // Opruimen: oude done/feedback/metrics van de vervangen sessie wissen voor deze week
+    Object.keys(state.done).forEach(k => {
+      if (k.startsWith(wd.weekId + ':') && k.endsWith(':' + sameDisciplineSession)) delete state.done[k];
+    });
+    Object.keys(state.feedback).forEach(k => {
+      if (k.startsWith(wd.weekId + ':') && k.endsWith(':' + sameDisciplineSession)) delete state.feedback[k];
+    });
+    Object.keys(state.metrics).forEach(k => {
+      if (k.startsWith(wd.weekId + ':') && k.endsWith(':' + sameDisciplineSession)) delete state.metrics[k];
+    });
+    // Voeg de nieuwe sessie toe op deze dag via een synthetische move
+    state.moves[wd.weekId + ':__import:' + item.sessie_type + ':' + item.datum] = wd.dayIndex;
+    return await applyImportData(wd.weekId, wd.dayIndex, item, 'replaced');
+  }
+
+  // Geval 4: nieuwe discipline op deze dag, niet elders in plan → toevoegen
+  state.moves[wd.weekId + ':__import:' + item.sessie_type + ':' + item.datum] = wd.dayIndex;
+  return await applyImportData(wd.weekId, wd.dayIndex, item, 'added');
+}
+
+async function applyImportData(weekId, dayIndex, item, mode) {
+  const key = weekId + ':' + dayIndex + ':' + item.sessie_type;
+
+  if (item.voltooid !== false) {
+    state.done[key] = true;
+  }
+  if (item.feedback && typeof item.feedback === 'string' && item.feedback.trim()) {
+    state.feedback[key] = {
+      text: item.feedback.trim(),
+      updatedAt: new Date().toISOString()
+    };
+  }
+  if (item.metrics && typeof item.metrics === 'object') {
+    state.metrics[key] = item.metrics;
+  }
+
+  return { success: true, weekId: weekId, dayIndex: dayIndex, sid: item.sessie_type, mode: mode };
+}
+
+function setImportMsg(msg, type) {
+  const el = document.getElementById('importMeta');
+  el.textContent = msg;
+  el.style.color = type === 'err' ? '#d32f2f' : (type === 'ok' ? '#0F6E56' : '#888');
+}
+
+async function toggleDone(sid, di) {
+  const key = activeWeek + ':' + di + ':' + sid;
+  if (state.done[key]) {
+    delete state.done[key];
+  } else {
+    state.done[key] = true;
+  }
+  await saveState();
+  renderWeek(activeWeek);
+  showDetail(sid, di);
+}
+
+// ============================================================
+// DRAG & DROP
+// ============================================================
+function onDragStart(e, sid, di) {
+  dragSessId = sid;
+  dragFromDay = di;
+  setTimeout(() => {
+    const el = e.target;
+    if(el) el.classList.add('dragging');
+  }, 0);
+}
+
+function onDragOver(e) {
+  e.preventDefault();
+  e.currentTarget.classList.add('drag-over');
+}
+
+function onDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+async function onDrop(e, toDay) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  document.querySelectorAll('.session-pill').forEach(el => el.classList.remove('dragging'));
+
+  if(dragSessId === null || dragFromDay === null || toDay === dragFromDay) {
+    dragSessId = null; dragFromDay = null; return;
+  }
+
+  applyMove(dragSessId, dragFromDay, toDay);
+  selectedSess = { sid: dragSessId, di: toDay };
+  dragSessId = null; dragFromDay = null;
+  await saveState();
+  renderWeek(activeWeek);
+}
+
+// Bepaal op welke dag in het PLAN deze sessie hoort
+function getOriginalDay(weekId, sid) {
+  const plan = WEEKS[weekId];
+  if (!plan) return -1;
+  for (let di = 0; di < plan.days.length; di++) {
+    if (plan.days[di].sessions.includes(sid)) return di;
+  }
+  return -1;
+}
+
+// Verplaats sid van fromDay naar toDay; werkt state.moves bij
+function applyMove(sid, fromDay, toDay) {
+  const origDay = getOriginalDay(activeWeek, sid);
+  // Done-key updaten naar nieuwe dag
+  const oldDoneKey = activeWeek + ':' + fromDay + ':' + sid;
+  const newDoneKey = activeWeek + ':' + toDay + ':' + sid;
+  if (state.done[oldDoneKey]) {
+    delete state.done[oldDoneKey];
+    state.done[newDoneKey] = true;
+  }
+  // Feedback-key updaten naar nieuwe dag
+  const oldFbKey = activeWeek + ':' + fromDay + ':' + sid;
+  const newFbKey = activeWeek + ':' + toDay + ':' + sid;
+  if (state.feedback[oldFbKey]) {
+    state.feedback[newFbKey] = state.feedback[oldFbKey];
+    delete state.feedback[oldFbKey];
+  }
+  // Move-key altijd op origDay, niet fromDay
+  const moveKey = activeWeek + ':' + (origDay >= 0 ? origDay : fromDay) + ':' + sid;
+  if (origDay === toDay) {
+    // Terug naar oorspronkelijke dag = move ongedaan maken
+    delete state.moves[moveKey];
+  } else if (origDay >= 0) {
+    state.moves[moveKey] = toDay;
+  } else {
+    // Sessie zat niet in plan → toch opslaan vanaf fromDay
+    state.moves[activeWeek + ':' + fromDay + ':' + sid] = toDay;
+  }
+}
+
+// ============================================================
+// STATUS rendering (dynamisch op basis van huidige week)
+// ============================================================
+function renderStatus() {
+  const wkId = getCurrentWeekId();
+  const w = getWeekView(wkId);
+  const meta = WEEK_META.find(m => m.id === wkId);
+  if (!w) return;
+
+  const today = new Date();
+  const todayIso = today.toISOString().slice(0,10);
+
+  const rowsHtml = w.days.map(day => {
+    const isToday = day.iso === todayIso;
+    const isPast = day.iso < todayIso;
+    const isFuture = day.iso > todayIso;
+
+    const sessNames = day.sessions.map(sid => SESSIONS[sid]?.label || sid).join(' + ') || 'Rust';
+    const anyDone = day.done.length > 0 && day.done.length >= day.sessions.length;
+    const partialDone = day.done.length > 0 && day.done.length < day.sessions.length;
+
+    let icon = '⬜';
+    let statusLabel = '';
+    let statusColor = '#888';
+    if (isPast) {
+      icon = anyDone ? '✅' : (partialDone ? '🟡' : '❌');
+      statusLabel = anyDone ? 'Gedaan' : (partialDone ? 'Deels' : 'Gemist');
+    } else if (isToday) {
+      icon = '🔵';
+      statusLabel = 'Vandaag';
+      statusColor = '#4fc3f7';
+    } else {
+      const daysAway = Math.round((new Date(day.iso) - today) / 86400000);
+      if (daysAway === 1) statusLabel = 'Morgen';
+      else statusLabel = day.name + ' ' + day.date;
+    }
+
+    return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f5f5f5">
+      <span>${icon} ${day.name} ${day.date} — ${sessNames}</span>
+      <span style="color:${statusColor};${isToday?'font-weight:bold':''}">${statusLabel}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('statusThisWeek').innerHTML = `
+    <div style="font-size:14px;font-weight:bold;margin-bottom:10px">${meta.label}</div>
+    <div style="display:flex;flex-direction:column;gap:4px;font-size:13px">${rowsHtml}</div>
+  `;
+}
+
+// ============================================================
+// INIT (robust voor Safari/iPhone — render eerst, storage op achtergrond)
+// ============================================================
+function init() {
+  // 1. Render DIRECT met verse data — geen await, geen storage-wait
+  try { renderWeek(getCurrentWeekId()); } catch(e) {
+    console.warn('renderWeek current failed, fallback w2:', e);
+    try { renderWeek('w2'); } catch(e2) { console.error('renderWeek fallback ook mislukt:', e2); }
+  }
+  try { renderStatus(); } catch(e) { console.warn('renderStatus:', e); }
+  try { renderSeason(); } catch(e) { console.warn('renderSeason:', e); }
+
+  // 2. Probeer op de achtergrond state te laden
+  setTimeout(function() {
+    loadState().then(function() {
+      try { renderWeek(activeWeek); renderStatus(); renderSeason(); } catch(e) { console.warn('post-load render:', e); }
+    }).catch(function(e) { console.warn('loadState bg:', e); });
+  }, 100);
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>
