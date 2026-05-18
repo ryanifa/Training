@@ -8,9 +8,13 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-size: 14px; user-select: none; }
 
-.header { background: #1a1a2e; color: white; padding: 16px 20px; }
+.header { background: #1a1a2e; color: white; padding: 16px 20px; position: relative; }
 .header h1 { font-size: 20px; font-weight: bold; margin-bottom: 4px; }
 .header .sub { font-size: 13px; opacity: 0.7; }
+.sync-btn { position: absolute; top: 14px; right: 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: white; padding: 6px 12px; border-radius: 16px; font-size: 14px; cursor: pointer; }
+.sync-btn:hover { background: rgba(255,255,255,0.16); }
+.sync-btn.connected { background: rgba(79,195,247,0.18); border-color: rgba(79,195,247,0.4); }
+.sync-btn.syncing { background: rgba(255,193,7,0.2); border-color: rgba(255,193,7,0.4); }
 
 .nav { display: flex; gap: 0; background: #16213e; border-bottom: 2px solid #0f3460; overflow-x: auto; }
 .nav-btn { padding: 10px 18px; font-size: 13px; font-weight: bold; cursor: pointer; color: #aaa; border: none; background: transparent; white-space: nowrap; border-bottom: 3px solid transparent; }
@@ -267,6 +271,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 <body>
 
 <div class="header">
+  <button class="sync-btn" id="syncNavBtn" onclick="openSync()" title="Synchroniseren tussen apparaten">☁︎</button>
   <h1>Trainingsoverzicht — Ryan Douglas</h1>
   <div class="sub">Seizoen 2026 · 70.3 Luxemburg 11 jul · IJsselmeer 30 aug · Zwarte Plasje 13 sep · Marathon 1 nov</div>
 </div>
@@ -477,6 +482,38 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
     <div class="modal-footer">
       <div style="flex:1"></div>
       <button class="modal-btn" onclick="closeWorkout()">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<!-- SYNC MODAL -->
+<div class="modal-overlay" id="syncModal" onclick="onSyncBgClick(event)">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">☁︎ Sync tussen apparaten</div>
+        <div class="modal-sub">Sla je trainingslog op in een privé GitHub Gist, zodat je 'm op je computer én je iPhone ziet.</div>
+      </div>
+      <button class="modal-close" onclick="closeSync()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="syncStatus" style="padding:10px 12px;border-radius:6px;background:#f5f5f5;font-size:13px;margin-bottom:14px"></div>
+
+      <label style="display:block;font-size:12px;font-weight:bold;color:#555;margin-bottom:4px">GitHub Personal Access Token</label>
+      <input id="syncToken" type="password" placeholder="ghp_…" style="width:100%;padding:7px 9px;border:1px solid #ddd;border-radius:6px;font-family:monospace;font-size:12px">
+      <div class="modal-meta">Maak er een aan op <a href="https://github.com/settings/tokens/new?scopes=gist&description=Trainingsoverzicht" target="_blank" rel="noopener">github.com/settings/tokens</a> met alléén scope <code>gist</code>. Het token blijft alleen in deze browser.</div>
+
+      <label style="display:block;font-size:12px;font-weight:bold;color:#555;margin:14px 0 4px">Gist ID <span style="font-weight:normal;color:#888">(laat leeg om een nieuwe aan te maken)</span></label>
+      <input id="syncGistId" placeholder="bv. 8a3f2c1d4e5f6789…" style="width:100%;padding:7px 9px;border:1px solid #ddd;border-radius:6px;font-family:monospace;font-size:12px">
+      <div class="modal-meta">Op je tweede apparaat: plak hier het Gist ID dat je op het eerste apparaat hebt aangemaakt.</div>
+
+      <div class="modal-meta" id="syncMsg" style="margin-top:12px;min-height:16px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn modal-btn-danger" id="syncDisconnectBtn" onclick="disconnectSync()" style="display:none">Loskoppelen</button>
+      <div style="flex:1"></div>
+      <button class="modal-btn" onclick="syncNowManual()">🔄 Sync nu</button>
+      <button class="modal-btn modal-btn-primary" onclick="connectSync()">Verbinden</button>
     </div>
   </div>
 </div>
@@ -1320,76 +1357,297 @@ function getWeekView(weekId) {
   return w;
 }
 
-async function loadState() {
-  if (typeof window.storage === 'undefined' || !window.storage.get) return;
-  let result = null;
-  try {
-    result = await window.storage.get('trainingState');
-  } catch(e) {
-    return; // Key bestaat nog niet
-  }
-  if (!result || !result.value) return;
-  try {
-    const saved = JSON.parse(result.value);
+// ============================================================
+// STATE STORAGE — layered: localStorage (primary) + optional GitHub Gist sync
+// ============================================================
+const SYNC_FILE = 'trainingState.json';
+const LS_KEY = 'trainingState';
+const SYNC_CFG_KEY = 'syncConfig';
+let cloudPushTimer = null;
+let lastSyncAt = null;
+let isSyncing = false;
 
-    // Nieuwe structuur (done/missed/moves/skips/feedback/metrics)
-    if (saved.done && typeof saved.done === 'object') state.done = saved.done;
-    if (saved.missed && typeof saved.missed === 'object') state.missed = saved.missed;
-    if (saved.moves && typeof saved.moves === 'object') state.moves = saved.moves;
-    if (saved.skips && typeof saved.skips === 'object') state.skips = saved.skips;
-    if (saved.feedback && typeof saved.feedback === 'object') state.feedback = saved.feedback;
-    if (saved.metrics && typeof saved.metrics === 'object') state.metrics = saved.metrics;
+function buildStateBlob() {
+  return {
+    _meta: { updatedAt: new Date().toISOString() },
+    done: state.done,
+    missed: state.missed,
+    moves: state.moves,
+    skips: state.skips,
+    feedback: state.feedback,
+    metrics: state.metrics
+  };
+}
 
-    // Migratie van oude structuur (saved.weekData met done-arrays per dag)
-    if (saved.weekData && typeof saved.weekData === 'object') {
-      Object.keys(saved.weekData).forEach(wkId => {
-        const oldWeek = saved.weekData[wkId];
-        if (!oldWeek || !oldWeek.days) return;
-        // Done-markeringen migreren
-        oldWeek.days.forEach((oldDay, di) => {
-          if (oldDay.done && Array.isArray(oldDay.done)) {
-            oldDay.done.forEach(sid => {
-              state.done[wkId + ':' + di + ':' + sid] = true;
-            });
-          }
-          // Verplaatste sessies opsporen: vergelijk met huidig plan
-          const planWeek = WEEKS[wkId];
-          if (planWeek && oldDay.sessions && Array.isArray(oldDay.sessions)) {
-            oldDay.sessions.forEach(sid => {
-              const planDay = planWeek.days[di];
-              if (planDay && !planDay.sessions.includes(sid)) {
-                // sid staat in opgeslagen dag maar niet in het plan → was verplaatst
-                // Zoek in welke dag van het plan hij oorspronkelijk hoort
-                for (let pdi = 0; pdi < planWeek.days.length; pdi++) {
-                  if (planWeek.days[pdi].sessions.includes(sid)) {
-                    state.moves[wkId + ':' + pdi + ':' + sid] = di;
-                    break;
-                  }
+function applyStateBlob(saved) {
+  if (!saved || typeof saved !== 'object') return;
+  if (saved.done && typeof saved.done === 'object') state.done = saved.done;
+  if (saved.missed && typeof saved.missed === 'object') state.missed = saved.missed;
+  if (saved.moves && typeof saved.moves === 'object') state.moves = saved.moves;
+  if (saved.skips && typeof saved.skips === 'object') state.skips = saved.skips;
+  if (saved.feedback && typeof saved.feedback === 'object') state.feedback = saved.feedback;
+  if (saved.metrics && typeof saved.metrics === 'object') state.metrics = saved.metrics;
+
+  // Legacy migratie (oude weekData-structuur)
+  if (saved.weekData && typeof saved.weekData === 'object') {
+    Object.keys(saved.weekData).forEach(wkId => {
+      const oldWeek = saved.weekData[wkId];
+      if (!oldWeek || !oldWeek.days) return;
+      oldWeek.days.forEach((oldDay, di) => {
+        if (oldDay.done && Array.isArray(oldDay.done)) {
+          oldDay.done.forEach(sid => { state.done[wkId + ':' + di + ':' + sid] = true; });
+        }
+        const planWeek = WEEKS[wkId];
+        if (planWeek && oldDay.sessions && Array.isArray(oldDay.sessions)) {
+          oldDay.sessions.forEach(sid => {
+            const planDay = planWeek.days[di];
+            if (planDay && !planDay.sessions.includes(sid)) {
+              for (let pdi = 0; pdi < planWeek.days.length; pdi++) {
+                if (planWeek.days[pdi].sessions.includes(sid)) {
+                  state.moves[wkId + ':' + pdi + ':' + sid] = di;
+                  break;
                 }
               }
-            });
-          }
-        });
+            }
+          });
+        }
       });
-    }
-  } catch(e) {
-    console.warn('loadState parse-fout:', e);
+    });
   }
 }
 
-async function saveState() {
-  if (typeof window.storage === 'undefined' || !window.storage.set) return;
+function readLocalBlob() {
   try {
-    await window.storage.set('trainingState', JSON.stringify({
-      done: state.done,
-      missed: state.missed,
-      moves: state.moves,
-      skips: state.skips,
-      feedback: state.feedback,
-      metrics: state.metrics
-    }));
+    const raw = localStorage.getItem(LS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function writeLocalBlob(blob) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(blob)); }
+  catch(e) { console.warn('localStorage write:', e); }
+}
+
+async function loadState() {
+  // 1. localStorage als primaire bron (synchroon, snel)
+  const local = readLocalBlob();
+  if (local) applyStateBlob(local);
+
+  // 2. Migratie vanuit oude window.storage als localStorage leeg is
+  if (!local && typeof window.storage !== 'undefined' && window.storage.get) {
+    try {
+      const result = await window.storage.get('trainingState');
+      if (result && result.value) {
+        applyStateBlob(JSON.parse(result.value));
+        writeLocalBlob(buildStateBlob());
+      }
+    } catch(e) { /* niet beschikbaar */ }
+  }
+
+  // 3. Cloud-pull als sync geconfigureerd is
+  await pullFromCloud();
+}
+
+async function saveState() {
+  const blob = buildStateBlob();
+  writeLocalBlob(blob);
+  // Legacy compat: ook in window.storage schrijven als die bestaat
+  if (typeof window.storage !== 'undefined' && window.storage.set) {
+    try { await window.storage.set('trainingState', JSON.stringify(blob)); }
+    catch(e) { /* ignore */ }
+  }
+  scheduleCloudPush();
+}
+
+// ============================================================
+// GITHUB GIST SYNC
+// ============================================================
+function getSyncConfig() {
+  try {
+    const raw = localStorage.getItem(SYNC_CFG_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function setSyncConfig(cfg) {
+  if (cfg) localStorage.setItem(SYNC_CFG_KEY, JSON.stringify(cfg));
+  else localStorage.removeItem(SYNC_CFG_KEY);
+  updateSyncBadge();
+}
+
+async function gistFetch(gistId, token) {
+  const r = await fetch('https://api.github.com/gists/' + gistId, {
+    headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json' }
+  });
+  if (!r.ok) throw new Error('Gist ophalen mislukt (HTTP ' + r.status + ')');
+  const data = await r.json();
+  const file = data.files && data.files[SYNC_FILE];
+  if (!file || typeof file.content !== 'string') throw new Error('Gist bevat geen ' + SYNC_FILE);
+  return JSON.parse(file.content);
+}
+
+async function gistUpdate(gistId, token, blob) {
+  const r = await fetch('https://api.github.com/gists/' + gistId, {
+    method: 'PATCH',
+    headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ files: { [SYNC_FILE]: { content: JSON.stringify(blob) } } })
+  });
+  if (!r.ok) throw new Error('Gist updaten mislukt (HTTP ' + r.status + ')');
+}
+
+async function gistCreate(token, blob) {
+  const r = await fetch('https://api.github.com/gists', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      description: 'Trainingsoverzicht state — auto-managed',
+      public: false,
+      files: { [SYNC_FILE]: { content: JSON.stringify(blob) } }
+    })
+  });
+  if (!r.ok) throw new Error('Gist aanmaken mislukt (HTTP ' + r.status + ')');
+  const data = await r.json();
+  return data.id;
+}
+
+async function pushToCloud() {
+  const cfg = getSyncConfig();
+  if (!cfg || !cfg.token || !cfg.gistId) return;
+  if (isSyncing) return;
+  isSyncing = true; updateSyncBadge();
+  try {
+    await gistUpdate(cfg.gistId, cfg.token, buildStateBlob());
+    lastSyncAt = new Date();
   } catch(e) {
-    console.warn('saveState fout:', e);
+    console.warn('pushToCloud:', e);
+  } finally {
+    isSyncing = false; updateSyncBadge();
+  }
+}
+
+async function pullFromCloud() {
+  const cfg = getSyncConfig();
+  if (!cfg || !cfg.token || !cfg.gistId) return false;
+  if (isSyncing) return false;
+  isSyncing = true; updateSyncBadge();
+  try {
+    const remote = await gistFetch(cfg.gistId, cfg.token);
+    const local = readLocalBlob();
+    const rTs = remote && remote._meta && remote._meta.updatedAt;
+    const lTs = local && local._meta && local._meta.updatedAt;
+    if (rTs && (!lTs || rTs > lTs)) {
+      applyStateBlob(remote);
+      writeLocalBlob(remote);
+    } else if (lTs && (!rTs || lTs > rTs)) {
+      // Lokale data is nieuwer: push terug naar cloud
+      await gistUpdate(cfg.gistId, cfg.token, buildStateBlob());
+    }
+    lastSyncAt = new Date();
+    return true;
+  } catch(e) {
+    console.warn('pullFromCloud:', e);
+    return false;
+  } finally {
+    isSyncing = false; updateSyncBadge();
+  }
+}
+
+function scheduleCloudPush() {
+  if (cloudPushTimer) clearTimeout(cloudPushTimer);
+  cloudPushTimer = setTimeout(pushToCloud, 1500);
+}
+
+function updateSyncBadge() {
+  const btn = document.getElementById('syncNavBtn');
+  if (!btn) return;
+  const cfg = getSyncConfig();
+  btn.classList.remove('connected', 'syncing');
+  if (isSyncing) { btn.classList.add('syncing'); btn.textContent = '🔄'; }
+  else if (cfg && cfg.gistId) { btn.classList.add('connected'); btn.textContent = '☁︎'; }
+  else { btn.textContent = '☁︎'; }
+}
+
+// Sync-modal handlers
+function openSync() {
+  const cfg = getSyncConfig() || {};
+  document.getElementById('syncToken').value = cfg.token || '';
+  document.getElementById('syncGistId').value = cfg.gistId || '';
+  document.getElementById('syncMsg').textContent = '';
+  document.getElementById('syncDisconnectBtn').style.display = (cfg.token && cfg.gistId) ? '' : 'none';
+  renderSyncStatus();
+  document.getElementById('syncModal').classList.add('active');
+}
+function closeSync() { document.getElementById('syncModal').classList.remove('active'); }
+function onSyncBgClick(e) { if (e.target.id === 'syncModal') closeSync(); }
+
+function renderSyncStatus() {
+  const cfg = getSyncConfig();
+  const el = document.getElementById('syncStatus');
+  if (cfg && cfg.gistId) {
+    const tsTxt = lastSyncAt ? lastSyncAt.toLocaleString('nl-NL') : 'nog niet';
+    el.innerHTML = '<div style="color:#0F6E56;font-weight:bold">☁︎ Verbonden</div>' +
+      '<div style="font-size:12px;color:#666;margin-top:2px">Gist: <code>' + cfg.gistId + '</code></div>' +
+      '<div style="font-size:12px;color:#666;margin-top:2px">Laatst gesynchroniseerd: ' + tsTxt + '</div>';
+  } else {
+    el.innerHTML = '<div style="color:#888">Nog niet verbonden — vul token + (optioneel) Gist ID in.</div>';
+  }
+}
+
+function setSyncMsg(msg, type) {
+  const el = document.getElementById('syncMsg');
+  el.textContent = msg;
+  el.style.color = type === 'err' ? '#d32f2f' : (type === 'ok' ? '#0F6E56' : '#888');
+}
+
+async function connectSync() {
+  const token = document.getElementById('syncToken').value.trim();
+  let gistId = document.getElementById('syncGistId').value.trim();
+  if (!token) { setSyncMsg('Vul eerst een token in', 'err'); return; }
+  setSyncMsg('Bezig…');
+  try {
+    if (!gistId) {
+      gistId = await gistCreate(token, buildStateBlob());
+      setSyncConfig({ token, gistId });
+      document.getElementById('syncGistId').value = gistId;
+      lastSyncAt = new Date();
+      setSyncMsg('✅ Nieuwe gist aangemaakt. Kopieer het Gist ID en plak het op je iPhone.', 'ok');
+    } else {
+      setSyncConfig({ token, gistId });
+      const ok = await pullFromCloud();
+      if (!ok) {
+        setSyncConfig(null);
+        setSyncMsg('❌ Kon gist niet ophalen — check token/ID', 'err');
+      } else {
+        renderWeek(activeWeek); renderStatus();
+        setSyncMsg('✅ Verbonden — data gesynchroniseerd', 'ok');
+      }
+    }
+    document.getElementById('syncDisconnectBtn').style.display = getSyncConfig() ? '' : 'none';
+    renderSyncStatus();
+  } catch(e) {
+    setSyncMsg('❌ ' + e.message, 'err');
+  }
+}
+
+function disconnectSync() {
+  if (!confirm('Sync loskoppelen? Lokale data blijft behouden, maar wordt niet meer gesynchroniseerd.')) return;
+  setSyncConfig(null);
+  document.getElementById('syncDisconnectBtn').style.display = 'none';
+  renderSyncStatus();
+  setSyncMsg('Losgekoppeld', 'ok');
+}
+
+async function syncNowManual() {
+  const cfg = getSyncConfig();
+  if (!cfg) { setSyncMsg('Eerst verbinden', 'err'); return; }
+  setSyncMsg('Bezig…');
+  const ok = await pullFromCloud();
+  if (ok) {
+    renderWeek(activeWeek); renderStatus();
+    renderSyncStatus();
+    setSyncMsg('✅ Gesynchroniseerd', 'ok');
+  } else {
+    setSyncMsg('❌ Sync mislukt', 'err');
   }
 }
 
@@ -2655,6 +2913,7 @@ function init() {
   }
   try { renderStatus(); } catch(e) { console.warn('renderStatus:', e); }
   try { renderSeason(); } catch(e) { console.warn('renderSeason:', e); }
+  updateSyncBadge();
 
   // 2. Probeer op de achtergrond state te laden
   setTimeout(function() {
@@ -2662,6 +2921,15 @@ function init() {
       try { renderWeek(activeWeek); renderStatus(); renderSeason(); } catch(e) { console.warn('post-load render:', e); }
     }).catch(function(e) { console.warn('loadState bg:', e); });
   }, 100);
+
+  // 3. Bij terugkeren naar de tab: opnieuw uit de cloud halen
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && getSyncConfig()) {
+      pullFromCloud().then(function(ok) {
+        if (ok) { try { renderWeek(activeWeek); renderStatus(); } catch(e) {} }
+      });
+    }
+  });
 }
 
 if (document.readyState === 'loading') {
