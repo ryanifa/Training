@@ -509,8 +509,10 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 
       <div class="modal-meta" id="syncMsg" style="margin-top:12px;min-height:16px"></div>
     </div>
-    <div class="modal-footer">
+    <div class="modal-footer" style="flex-wrap:wrap;gap:6px">
       <button class="modal-btn modal-btn-danger" id="syncDisconnectBtn" onclick="disconnectSync()" style="display:none">Loskoppelen</button>
+      <button class="modal-btn" onclick="forcePullUI()" title="Cloud → lokaal (overschrijf)">⬇ Forceer ophalen</button>
+      <button class="modal-btn" onclick="forcePushUI()" title="Lokaal → cloud (overschrijf)">⬆ Forceer uploaden</button>
       <div style="flex:1"></div>
       <button class="modal-btn" onclick="syncNowManual()">🔄 Sync nu</button>
       <button class="modal-btn modal-btn-primary" onclick="connectSync()">Verbinden</button>
@@ -1554,7 +1556,41 @@ async function pullFromCloud() {
 
 function scheduleCloudPush() {
   if (cloudPushTimer) clearTimeout(cloudPushTimer);
-  cloudPushTimer = setTimeout(pushToCloud, 1500);
+  // Korte debounce om rapid changes te batchen, maar kort genoeg dat een
+  // gewone klik vrijwel direct naar de cloud gaat.
+  cloudPushTimer = setTimeout(pushToCloud, 400);
+}
+
+async function flushCloudPush() {
+  if (cloudPushTimer) { clearTimeout(cloudPushTimer); cloudPushTimer = null; }
+  await pushToCloud();
+}
+
+// Forceer-varianten: negeren timestamp-vergelijking
+async function forcePullFromCloud() {
+  const cfg = getSyncConfig();
+  if (!cfg || !cfg.token || !cfg.gistId) return false;
+  isSyncing = true; updateSyncBadge();
+  try {
+    const remote = await gistFetch(cfg.gistId, cfg.token);
+    applyStateBlob(remote);
+    writeLocalBlob(remote);
+    lastSyncAt = new Date();
+    return true;
+  } catch(e) { console.warn('forcePull:', e); return false; }
+  finally { isSyncing = false; updateSyncBadge(); }
+}
+
+async function forcePushToCloud() {
+  const cfg = getSyncConfig();
+  if (!cfg || !cfg.token || !cfg.gistId) return false;
+  isSyncing = true; updateSyncBadge();
+  try {
+    await gistUpdate(cfg.gistId, cfg.token, buildStateBlob());
+    lastSyncAt = new Date();
+    return true;
+  } catch(e) { console.warn('forcePush:', e); return false; }
+  finally { isSyncing = false; updateSyncBadge(); }
 }
 
 function updateSyncBadge() {
@@ -1648,6 +1684,31 @@ async function syncNowManual() {
     setSyncMsg('✅ Gesynchroniseerd', 'ok');
   } else {
     setSyncMsg('❌ Sync mislukt', 'err');
+  }
+}
+
+async function forcePullUI() {
+  if (!confirm('Lokale data overschrijven met versie uit de cloud?\n\nGebruik dit op het apparaat dat de oude versie toont.')) return;
+  setSyncMsg('Bezig…');
+  const ok = await forcePullFromCloud();
+  if (ok) {
+    renderWeek(activeWeek); renderStatus();
+    renderSyncStatus();
+    setSyncMsg('✅ Cloud-versie geladen', 'ok');
+  } else {
+    setSyncMsg('❌ Mislukt', 'err');
+  }
+}
+
+async function forcePushUI() {
+  if (!confirm('Cloud overschrijven met data van dit apparaat?\n\nGebruik dit op het apparaat met de markering die je wilt bewaren.')) return;
+  setSyncMsg('Bezig…');
+  const ok = await forcePushToCloud();
+  if (ok) {
+    renderSyncStatus();
+    setSyncMsg('✅ Lokale versie naar cloud gepusht', 'ok');
+  } else {
+    setSyncMsg('❌ Mislukt', 'err');
   }
 }
 
@@ -2923,13 +2984,17 @@ function init() {
   }, 100);
 
   // 3. Bij terugkeren naar de tab: opnieuw uit de cloud halen
+  //    Bij verlaten van de tab: pending push naar cloud flushen
   document.addEventListener('visibilitychange', function() {
-    if (!document.hidden && getSyncConfig()) {
+    if (document.hidden) {
+      flushCloudPush();
+    } else if (getSyncConfig()) {
       pullFromCloud().then(function(ok) {
         if (ok) { try { renderWeek(activeWeek); renderStatus(); } catch(e) {} }
       });
     }
   });
+  window.addEventListener('pagehide', function() { flushCloudPush(); });
 }
 
 if (document.readyState === 'loading') {
