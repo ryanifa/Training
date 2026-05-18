@@ -1469,8 +1469,14 @@ async function cleanWeek() {
     const sid = parts.slice(2).join(':');
     return !planSessIds.has(sid);
   });
+  const orphanMissed = Object.keys(state.missed).filter(key => {
+    if (!key.startsWith(activeWeek + ':')) return false;
+    const parts = key.split(':');
+    const sid = parts.slice(2).join(':');
+    return !planSessIds.has(sid);
+  });
 
-  const totaal = movesToDelete.length + skipsToDelete.length + orphanDone.length;
+  const totaal = movesToDelete.length + skipsToDelete.length + orphanDone.length + orphanMissed.length;
 
   if (totaal === 0) {
     alert('Deze week is al schoon. Geen verplaatsingen, vervangingen of verweesde markeringen gevonden.');
@@ -1480,6 +1486,7 @@ async function cleanWeek() {
   movesToDelete.forEach(key => delete state.moves[key]);
   skipsToDelete.forEach(key => delete state.skips[key]);
   orphanDone.forEach(key => delete state.done[key]);
+  orphanMissed.forEach(key => delete state.missed[key]);
 
   await saveState();
   selectedSess = null;
@@ -1489,7 +1496,8 @@ async function cleanWeek() {
   alert('✅ Opgeschoond:\n' +
     '• ' + movesToDelete.length + ' verplaatsing(en) verwijderd\n' +
     '• ' + skipsToDelete.length + ' vervanging(en) teruggedraaid\n' +
-    '• ' + orphanDone.length + ' verweesde markering(en) verwijderd');
+    '• ' + orphanDone.length + ' verweesde gedaan-markering(en) verwijderd\n' +
+    '• ' + orphanMissed.length + ' verweesde gemist-markering(en) verwijderd');
 }
 
 function showDebug() {
@@ -1666,6 +1674,7 @@ function showDetail(sid, di) {
   const day = w.days[di];
   if(!day) return;
   const isDone = day.done.includes(sid);
+  const isMissed = state.missed[activeWeek + ':' + di + ':' + sid] === true;
   const panel = document.getElementById('detailPanel');
   panel.style.display = 'block';
 
@@ -1698,6 +1707,9 @@ function showDetail(sid, di) {
     ${stepsHtml}
     <button class="mark-done-btn" onclick="toggleDone('${sid}',${di})">
       ${isDone ? '↩ Markeer als niet gedaan' : '✅ Markeer als gedaan'}
+    </button>
+    <button class="mark-done-btn" onclick="toggleMissed('${sid}',${di})">
+      ${isMissed ? '↩ Markeer als niet gemist' : '🚫 Markeer als gemist'}
     </button>
     <button class="move-btn" onclick="startMove('${sid}',${di})">
       📌 Verplaats naar andere dag
@@ -2436,8 +2448,12 @@ async function importSingle(item) {
 async function applyImportData(weekId, dayIndex, item, mode) {
   const key = weekId + ':' + dayIndex + ':' + item.sessie_type;
 
-  if (item.voltooid !== false) {
+  if (item.voltooid === false) {
+    state.missed[key] = true;
+    delete state.done[key];
+  } else {
     state.done[key] = true;
+    delete state.missed[key];
   }
   if (item.feedback && typeof item.feedback === 'string' && item.feedback.trim()) {
     state.feedback[key] = {
@@ -2464,6 +2480,20 @@ async function toggleDone(sid, di) {
     delete state.done[key];
   } else {
     state.done[key] = true;
+    delete state.missed[key];
+  }
+  await saveState();
+  renderWeek(activeWeek);
+  showDetail(sid, di);
+}
+
+async function toggleMissed(sid, di) {
+  const key = activeWeek + ':' + di + ':' + sid;
+  if (state.missed[key]) {
+    delete state.missed[key];
+  } else {
+    state.missed[key] = true;
+    delete state.done[key];
   }
   await saveState();
   renderWeek(activeWeek);
@@ -2527,6 +2557,11 @@ function applyMove(sid, fromDay, toDay) {
     delete state.done[oldDoneKey];
     state.done[newDoneKey] = true;
   }
+  // Missed-key updaten naar nieuwe dag
+  if (state.missed[oldDoneKey]) {
+    delete state.missed[oldDoneKey];
+    state.missed[newDoneKey] = true;
+  }
   // Feedback-key updaten naar nieuwe dag
   const oldFbKey = activeWeek + ':' + fromDay + ':' + sid;
   const newFbKey = activeWeek + ':' + toDay + ':' + sid;
@@ -2559,21 +2594,34 @@ function renderStatus() {
   const today = new Date();
   const todayIso = today.toISOString().slice(0,10);
 
-  const rowsHtml = w.days.map(day => {
+  const rowsHtml = w.days.map((day, di) => {
     const isToday = day.iso === todayIso;
     const isPast = day.iso < todayIso;
     const isFuture = day.iso > todayIso;
 
     const sessNames = day.sessions.map(sid => SESSIONS[sid]?.label || sid).join(' + ') || 'Rust';
-    const anyDone = day.done.length > 0 && day.done.length >= day.sessions.length;
-    const partialDone = day.done.length > 0 && day.done.length < day.sessions.length;
+    const total = day.sessions.length;
+    const doneCount = day.done.length;
+    const missedCount = day.sessions.filter(sid => state.missed[wkId + ':' + di + ':' + sid] === true).length;
+    const allDone = total > 0 && doneCount >= total;
+    const allMissed = total > 0 && missedCount >= total;
+    const partialDone = doneCount > 0 && doneCount < total;
 
     let icon = '⬜';
     let statusLabel = '';
     let statusColor = '#888';
     if (isPast) {
-      icon = anyDone ? '✅' : (partialDone ? '🟡' : '❌');
-      statusLabel = anyDone ? 'Gedaan' : (partialDone ? 'Deels' : 'Gemist');
+      if (total === 0) {
+        icon = '💤'; statusLabel = 'Rust';
+      } else if (allDone) {
+        icon = '✅'; statusLabel = 'Gedaan';
+      } else if (allMissed) {
+        icon = '🚫'; statusLabel = 'Gemist'; statusColor = '#993C1D';
+      } else if (partialDone || missedCount > 0) {
+        icon = '🟡'; statusLabel = 'Deels' + (missedCount > 0 ? ' (' + missedCount + ' gemist)' : '');
+      } else {
+        icon = '❌'; statusLabel = 'Niet gemarkeerd';
+      }
     } else if (isToday) {
       icon = '🔵';
       statusLabel = 'Vandaag';
