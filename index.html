@@ -8,18 +8,22 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-size: 14px; user-select: none; }
 
-.header { background: #1a1a2e; color: white; padding: 16px 20px; position: relative; }
-.header h1 { font-size: 20px; font-weight: bold; margin-bottom: 4px; }
+.header { background: #1a1a2e; color: white; padding: 14px 16px; }
+.header-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.header h1 { font-size: 20px; font-weight: bold; margin-bottom: 4px; line-height: 1.2; }
 .header .sub { font-size: 13px; opacity: 0.7; }
-.sync-btn { position: absolute; top: 14px; right: 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: white; padding: 6px 12px; border-radius: 16px; font-size: 14px; cursor: pointer; }
+.sync-btn { flex-shrink: 0; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: white; padding: 6px 12px; border-radius: 16px; font-size: 14px; cursor: pointer; line-height: 1; }
 .sync-btn:hover { background: rgba(255,255,255,0.16); }
 .sync-btn.connected { background: rgba(79,195,247,0.18); border-color: rgba(79,195,247,0.4); }
 .sync-btn.syncing { background: rgba(255,193,7,0.2); border-color: rgba(255,193,7,0.4); }
 
-.nav { display: flex; gap: 0; background: #16213e; border-bottom: 2px solid #0f3460; overflow-x: auto; }
-.nav-btn { padding: 10px 18px; font-size: 13px; font-weight: bold; cursor: pointer; color: #aaa; border: none; background: transparent; white-space: nowrap; border-bottom: 3px solid transparent; }
+.nav { display: flex; gap: 0; background: #16213e; border-bottom: 2px solid #0f3460; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+.nav::-webkit-scrollbar { height: 3px; }
+.nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
+.nav-btn { padding: 10px 16px; font-size: 13px; font-weight: bold; cursor: pointer; color: #aaa; border: none; background: transparent; white-space: nowrap; border-bottom: 3px solid transparent; flex-shrink: 0; }
 .nav-btn:hover { color: white; }
 .nav-btn.active { color: white; border-bottom-color: #4fc3f7; }
+.nav-btn .nav-short { display: none; }
 
 .content { padding: 16px; max-width: 1100px; margin: 0 auto; }
 .page { display: none; }
@@ -66,10 +70,13 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 /* RESPONSIVE: mobiel — dagen onder elkaar */
 @media (max-width: 600px) {
   body { font-size: 13px; }
-  .header { padding: 12px 14px; }
-  .header h1 { font-size: 17px; }
+  .header { padding: 12px 12px; }
+  .header h1 { font-size: 16px; }
   .header .sub { font-size: 11px; }
-  .nav-btn { padding: 9px 12px; font-size: 12px; }
+  .sync-btn { padding: 5px 10px; font-size: 13px; }
+  .nav-btn { padding: 9px 10px; font-size: 12px; }
+  .nav-btn .nav-full { display: none; }
+  .nav-btn .nav-short { display: inline; }
   .content { padding: 10px; }
   .week-grid { grid-template-columns: 1fr; gap: 6px; }
   .day-col { min-height: auto; }
@@ -302,18 +309,22 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 <body>
 
 <div class="header">
-  <button class="sync-btn" id="syncNavBtn" onclick="openSync()" title="Synchroniseren tussen apparaten">☁︎</button>
-  <h1>Trainingsoverzicht — Ryan Douglas</h1>
-  <div class="sub">Seizoen 2026 · 70.3 Luxemburg 11 jul · IJsselmeer 30 aug · Zwarte Plasje 13 sep · Marathon 1 nov</div>
+  <div class="header-row">
+    <div style="min-width:0">
+      <h1>Trainingsoverzicht — Ryan Douglas</h1>
+      <div class="sub">Seizoen 2026 · 70.3 Luxemburg 11 jul · IJsselmeer 30 aug · Zwarte Plasje 13 sep · Marathon 1 nov</div>
+    </div>
+    <button class="sync-btn" id="syncNavBtn" onclick="openSync()" title="Synchroniseren tussen apparaten">☁︎</button>
+  </div>
 </div>
 
 <div class="nav">
-  <button class="nav-btn active" onclick="showPage('week', this)">Weekplan</button>
-  <button class="nav-btn" onclick="showPage('seizoen', this)">Seizoen</button>
-  <button class="nav-btn" onclick="showPage('kracht', this)">Kracht</button>
-  <button class="nav-btn" onclick="showPage('zones', this)">Zones</button>
-  <button class="nav-btn" onclick="showPage('doelen', this)">Doelen</button>
-  <button class="nav-btn" onclick="showPage('status', this)">Status</button>
+  <button class="nav-btn active" onclick="showPage('week', this)"><span class="nav-full">Weekplan</span><span class="nav-short">📅 Week</span></button>
+  <button class="nav-btn" onclick="showPage('seizoen', this)"><span class="nav-full">Seizoen</span><span class="nav-short">📊 Seizoen</span></button>
+  <button class="nav-btn" onclick="showPage('kracht', this)"><span class="nav-full">Kracht</span><span class="nav-short">💪 Kracht</span></button>
+  <button class="nav-btn" onclick="showPage('zones', this)"><span class="nav-full">Zones</span><span class="nav-short">🎯 Zones</span></button>
+  <button class="nav-btn" onclick="showPage('doelen', this)"><span class="nav-full">Doelen</span><span class="nav-short">⭐ Doelen</span></button>
+  <button class="nav-btn" onclick="showPage('status', this)"><span class="nav-full">Status</span><span class="nav-short">📈 Status</span></button>
 </div>
 
 <div class="content">
@@ -1804,7 +1815,13 @@ function showPage(id, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  if(btn) btn.classList.add('active');
+  if(btn) {
+    btn.classList.add('active');
+    // Zorg dat de actieve knop in beeld komt als de nav horizontaal scrollt
+    if (btn.scrollIntoView) {
+      try { btn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch(e) {}
+    }
+  }
   if(id === 'week') renderWeek(activeWeek);
   if(id === 'status') renderStatus();
   if(id === 'seizoen') renderSeason();
