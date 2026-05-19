@@ -3219,10 +3219,28 @@ let _fitParserLoading = null;
 async function loadFitParser() {
   if (window._FitParser) return window._FitParser;
   if (_fitParserLoading) return _fitParserLoading;
+  const candidates = [
+    'https://esm.sh/fit-file-parser@3.0.0',
+    'https://esm.sh/fit-file-parser@1.22.0',
+    'https://cdn.jsdelivr.net/npm/fit-file-parser@3.0.0/dist/esm/fit-parser.js',
+    'https://unpkg.com/fit-file-parser@3.0.0/dist/esm/fit-parser.js'
+  ];
   _fitParserLoading = (async () => {
-    const mod = await import('https://cdn.jsdelivr.net/npm/fit-file-parser@1.22.0/+esm');
-    window._FitParser = mod.default || mod;
-    return window._FitParser;
+    let lastErr = null;
+    for (const url of candidates) {
+      try {
+        const mod = await import(url);
+        const Parser = mod.default || mod.FitParser || mod;
+        if (typeof Parser === 'function') {
+          window._FitParser = Parser;
+          return Parser;
+        }
+        lastErr = new Error('Module gevonden op ' + url + ' maar geen FitParser-constructor');
+      } catch(e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr || new Error('Geen werkende CDN gevonden voor fit-file-parser');
   })();
   return _fitParserLoading;
 }
