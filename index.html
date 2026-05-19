@@ -272,6 +272,24 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 .coach-setup-banner { background: #FAEEDA; border-left: 3px solid #EF9F27; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-bottom: 12px; font-size: 13px; color: #854F0B; }
 .coach-setup-banner a { color: #854F0B; font-weight: bold; }
 
+/* FIT import */
+.fit-dropzone { border: 2px dashed #ccc; border-radius: 8px; padding: 22px 16px; text-align: center; cursor: pointer; margin-bottom: 12px; transition: all 0.15s; background: #fafafa; }
+.fit-dropzone:hover { border-color: #4fc3f7; background: #f0f9ff; }
+.fit-dropzone.drag-over { border-color: #4fc3f7; background: #e3f2fd; }
+.fit-item { background: #f9f9f9; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; font-size: 12px; }
+.fit-item-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; gap: 8px; }
+.fit-item-title { font-weight: bold; font-size: 13px; }
+.fit-item-meta { color: #888; font-size: 11px; margin-bottom: 4px; word-break: break-all; }
+.fit-item-stats { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: #444; margin: 6px 0; padding: 5px 8px; background: white; border-radius: 4px; }
+.fit-item-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+.fit-item-row label, .fit-item label { display: block; font-size: 11px; color: #555; font-weight: bold; margin-bottom: 2px; }
+.fit-item-row select, .fit-item-row input { width: 100%; padding: 5px 7px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; font-family: inherit; background: white; }
+.fit-item textarea { width: 100%; resize: vertical; min-height: 40px; padding: 5px 7px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; font-family: inherit; margin-top: 4px; }
+.fit-item-rm { background: none; border: 0; color: #d32f2f; cursor: pointer; font-size: 18px; padding: 0 4px; line-height: 1; }
+.fit-item-err { color: #d32f2f; font-size: 11px; margin-top: 4px; }
+.fit-item-tag { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 8px; background: #E6F1FB; color: #185FA5; font-weight: bold; }
+.fit-item-tag.auto { background: #E1F5EE; color: #0F6E56; }
+
 .week-nav { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
 .week-nav-btn { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #ddd; background: white; cursor: pointer; font-size: 12px; }
 .week-nav-btn:hover { background: #f0f0f0; }
@@ -357,7 +375,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
   </div>
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
     <button class="week-nav-btn" style="flex:0;font-size:11px;padding:5px 10px;background:#f8f8f8" onclick="cleanWeek()" title="Verwijdert oude verplaatsingen als de week niet meer met het plan klopt">🧹 Schoon week op</button>
-    <button class="week-nav-btn" style="flex:0;font-size:11px;padding:5px 10px;background:#EEEDFE;border-color:#7F77DD;color:#534AB7" onclick="openImport()">📥 Importeer trainingsanalyse</button>
+    <button class="week-nav-btn" style="flex:0;font-size:11px;padding:5px 10px;background:#EEEDFE;border-color:#7F77DD;color:#534AB7" onclick="openImport()">📂 Importeer .FIT</button>
   </div>
   <div class="week-info" id="weekInfo"></div>
   <div class="hint"><span class="hint-icon">↔️</span> Sleep trainingen naar een andere dag om te verschuiven · Klik op een training voor details</div>
@@ -544,22 +562,28 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 
 <!-- IMPORT MODAL -->
 <div class="modal-overlay" id="importModal" onclick="onImportBgClick(event)">
-  <div class="modal-box">
+  <div class="modal-box" style="max-width:640px">
     <div class="modal-header">
       <div>
-        <div class="modal-title">📥 Importeer trainingsanalyse</div>
-        <div class="modal-sub">Plak het JSON-blok uit je trainingsanalyse-chat</div>
+        <div class="modal-title">📂 Importeer .FIT-bestand(en)</div>
+        <div class="modal-sub">Garmin / Stryd / Wahoo / Suunto activiteiten — wordt automatisch gekoppeld aan de geplande sessie</div>
       </div>
       <button class="modal-close" onclick="closeImport()">×</button>
     </div>
     <div class="modal-body">
-      <textarea class="modal-textarea" id="importText" placeholder='{ "datum": "2026-04-30", "sessie_type": "swim_tech", "voltooid": true, "feedback": "...", "metrics": { ... } }' style="font-family:monospace;font-size:12px"></textarea>
-      <div class="modal-meta" id="importMeta">Tip: één object of een array van meerdere objecten kan beide</div>
+      <div class="fit-dropzone" id="fitDropzone" onclick="document.getElementById('fitFile').click()" ondragover="onFitDragOver(event)" ondragleave="onFitDragLeave(event)" ondrop="onFitDrop(event)">
+        <div style="font-size:28px">📂</div>
+        <div style="font-weight:bold;margin-top:4px;font-size:13px">Sleep .FIT-bestand(en) hier of klik om te kiezen</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">Meerdere tegelijk kan ook</div>
+        <input type="file" id="fitFile" accept=".fit,application/octet-stream" multiple style="display:none" onchange="onFitFiles(event)">
+      </div>
+      <div id="fitItems"></div>
+      <div class="modal-meta" id="importMeta"></div>
     </div>
     <div class="modal-footer">
       <div style="flex:1"></div>
       <button class="modal-btn" onclick="closeImport()">Annuleer</button>
-      <button class="modal-btn modal-btn-primary" onclick="processImport()">Importeren</button>
+      <button class="modal-btn modal-btn-primary" id="fitImportBtn" onclick="processFitImport()" disabled>Importeren</button>
     </div>
   </div>
 </div>
@@ -3170,11 +3194,12 @@ function computeFitCrc(data, start, end) {
 // IMPORT MODAL — JSON van trainingsanalyse importeren
 // ============================================================
 function openImport() {
-  document.getElementById('importText').value = '';
-  document.getElementById('importMeta').textContent = 'Tip: één object of een array van meerdere objecten kan beide';
-  document.getElementById('importMeta').style.color = '#888';
+  fitItems = [];
+  renderFitItems();
+  setImportMsg('');
+  const btn = document.getElementById('fitImportBtn');
+  if (btn) btn.disabled = true;
   document.getElementById('importModal').classList.add('active');
-  setTimeout(function() { document.getElementById('importText').focus(); }, 50);
 }
 
 function closeImport() {
@@ -3183,6 +3208,266 @@ function closeImport() {
 
 function onImportBgClick(e) {
   if (e.target.id === 'importModal') closeImport();
+}
+
+// ============================================================
+// FIT IMPORT
+// ============================================================
+let fitItems = []; // [{id, file, item, error, status}]
+let _fitParserLoading = null;
+
+async function loadFitParser() {
+  if (window._FitParser) return window._FitParser;
+  if (_fitParserLoading) return _fitParserLoading;
+  _fitParserLoading = (async () => {
+    const mod = await import('https://cdn.jsdelivr.net/npm/fit-file-parser@1.22.0/+esm');
+    window._FitParser = mod.default || mod;
+    return window._FitParser;
+  })();
+  return _fitParserLoading;
+}
+
+function onFitDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
+function onFitDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+async function onFitDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  await handleFitFiles(e.dataTransfer.files);
+}
+async function onFitFiles(e) {
+  await handleFitFiles(e.target.files);
+  e.target.value = '';
+}
+
+async function handleFitFiles(fileList) {
+  setImportMsg('Bezig met inlezen…');
+  let FitParser;
+  try { FitParser = await loadFitParser(); }
+  catch(e) { setImportMsg('Kon FIT-parser niet laden: ' + e.message, 'err'); return; }
+
+  for (const file of fileList) {
+    if (!/\.fit$/i.test(file.name)) continue;
+    const id = 'f' + Math.random().toString(36).slice(2, 8);
+    const fi = { id, file, item: null, error: null, status: 'parsing' };
+    fitItems.push(fi);
+    renderFitItems();
+
+    try {
+      const buf = await file.arrayBuffer();
+      const parser = new FitParser({
+        force: true,
+        speedUnit: 'km/h',
+        lengthUnit: 'km',
+        temperatureUnit: 'celsius',
+        elapsedRecordField: true,
+        mode: 'list'
+      });
+      const parsed = await new Promise((res, rej) => {
+        parser.parse(buf, (err, data) => err ? rej(err) : res(data));
+      });
+      fi.item = fitToItem(parsed);
+      fi.status = 'ready';
+    } catch(e) {
+      fi.error = e.message || String(e);
+      fi.status = 'error';
+    }
+    renderFitItems();
+  }
+  const ready = fitItems.filter(x => x.status === 'ready').length;
+  setImportMsg(ready + ' sessie(s) klaar voor import');
+  document.getElementById('fitImportBtn').disabled = ready === 0;
+}
+
+function fitToItem(parsed) {
+  // fit-file-parser geeft typisch: { activity, sessions, laps, records, sport, ... }
+  const sess =
+    (parsed.sessions && parsed.sessions[0]) ||
+    (parsed.activity && parsed.activity.sessions && parsed.activity.sessions[0]) ||
+    {};
+  const sportRaw =
+    (sess.sport || (parsed.sport && parsed.sport.sport) || parsed.sport || 'unknown');
+  const sport = String(sportRaw).toLowerCase();
+  const startTime =
+    sess.start_time ||
+    (parsed.activity && parsed.activity.timestamp) ||
+    (parsed.records && parsed.records[0] && parsed.records[0].timestamp);
+  let isoDate = null;
+  if (startTime) {
+    const d = new Date(startTime);
+    if (!isNaN(d)) isoDate = d.toISOString().slice(0, 10);
+  }
+
+  const sportMap = { running: 'run', cycling: 'bike', swimming: 'swim' };
+  const appType = sportMap[sport] || null;
+
+  // Metrics
+  const m = {};
+  const totalKm = sess.total_distance;       // km (gevraagd via lengthUnit)
+  const totalSec = sess.total_timer_time;    // sec
+  if (totalSec) m.duur_min = Math.round(totalSec / 60);
+  if (totalKm) m.afstand_km = Math.round(totalKm * 100) / 100;
+  if (sess.avg_heart_rate) m.hr_gem = Math.round(sess.avg_heart_rate);
+  if (sess.max_heart_rate) m.hr_max = Math.round(sess.max_heart_rate);
+  if (sess.total_calories) m.calorien = sess.total_calories;
+  if (sess.avg_cadence != null) {
+    m.cadans_gem = appType === 'run'
+      ? Math.round(sess.avg_cadence * 2)
+      : Math.round(sess.avg_cadence);
+  }
+  if (sess.avg_power) m.vermogen_gem_w = Math.round(sess.avg_power);
+  if (sess.normalized_power) m.vermogen_norm_w = Math.round(sess.normalized_power);
+  if (sess.training_stress_score) m.tss = Math.round(sess.training_stress_score);
+  if (totalKm && totalSec && appType === 'run') {
+    const sPerKm = totalSec / totalKm;
+    const mm = Math.floor(sPerKm / 60);
+    const ss = Math.round(sPerKm % 60);
+    m.pace_gem = mm + ':' + String(ss).padStart(2, '0') + '/km';
+  }
+  if (appType === 'swim') {
+    if (sess.avg_stroke_count) m.slagtempo_spm = Math.round(sess.avg_stroke_count);
+    if (sess.total_strokes && totalKm) {
+      m.slagafstand_cm = Math.round((totalKm * 1000 / sess.total_strokes) * 100);
+    }
+  }
+
+  // Auto-detect sessie_type: bekijk geplande sessies van die dag van dezelfde sport
+  let sessieType = null;
+  let autoMatched = false;
+  if (isoDate && appType) {
+    const wd = findWeekAndDay(isoDate);
+    if (wd) {
+      const w = WEEKS[wd.weekId];
+      const day = w && w.days[wd.dayIndex];
+      if (day) {
+        const matches = day.sessions.filter(sid => SESSIONS[sid] && SESSIONS[sid].type === appType);
+        if (matches.length >= 1) { sessieType = matches[0]; autoMatched = true; }
+      }
+    }
+  }
+
+  return {
+    datum: isoDate,
+    sessie_type: sessieType,
+    voltooid: true,
+    feedback: '',
+    metrics: m,
+    _sport: sport,
+    _appType: appType,
+    _autoMatched: autoMatched
+  };
+}
+
+function buildSessieTypeOptions(appType, selected) {
+  let html = '<option value="">— kies —</option>';
+  const sessionIds = Object.keys(SESSIONS);
+  const filtered = appType ? sessionIds.filter(sid => SESSIONS[sid].type === appType) : sessionIds;
+  const others = appType ? sessionIds.filter(sid => SESSIONS[sid].type !== appType) : [];
+  filtered.forEach(sid => {
+    const sel = sid === selected ? 'selected' : '';
+    html += '<option value="' + sid + '" ' + sel + '>' + escapeHtml(SESSIONS[sid].label) + ' (' + sid + ')</option>';
+  });
+  if (others.length > 0) {
+    html += '<option disabled>──────</option>';
+    others.forEach(sid => {
+      const sel = sid === selected ? 'selected' : '';
+      html += '<option value="' + sid + '" ' + sel + '>' + escapeHtml(SESSIONS[sid].label) + ' (' + sid + ')</option>';
+    });
+  }
+  return html;
+}
+
+function renderFitItems() {
+  const c = document.getElementById('fitItems');
+  if (!c) return;
+  if (fitItems.length === 0) { c.innerHTML = ''; return; }
+  c.innerHTML = fitItems.map(fi => {
+    if (fi.status === 'parsing') {
+      return '<div class="fit-item"><div class="fit-item-head"><span>' + escapeHtml(fi.file.name) + '</span><span>⌛ inlezen…</span></div></div>';
+    }
+    if (fi.status === 'error') {
+      return '<div class="fit-item"><div class="fit-item-head">' +
+        '<span>' + escapeHtml(fi.file.name) + '</span>' +
+        '<button class="fit-item-rm" onclick="removeFitItem(\'' + fi.id + '\')">×</button></div>' +
+        '<div class="fit-item-err">❌ ' + escapeHtml(fi.error) + '</div></div>';
+    }
+    const it = fi.item;
+    const sessOpts = buildSessieTypeOptions(it._appType, it.sessie_type);
+    const tag = it._autoMatched ? '<span class="fit-item-tag auto">auto</span>' : '<span class="fit-item-tag">handmatig</span>';
+    const statsList = [];
+    if (it.metrics.duur_min) statsList.push(it.metrics.duur_min + ' min');
+    if (it.metrics.afstand_km) statsList.push(it.metrics.afstand_km + ' km');
+    if (it.metrics.pace_gem) statsList.push(it.metrics.pace_gem);
+    if (it.metrics.hr_gem) statsList.push('HR ' + it.metrics.hr_gem + (it.metrics.hr_max ? '/' + it.metrics.hr_max : ''));
+    if (it.metrics.vermogen_gem_w) statsList.push(it.metrics.vermogen_gem_w + 'W');
+    if (it.metrics.cadans_gem) statsList.push(it.metrics.cadans_gem + ' spm/rpm');
+    return '<div class="fit-item">' +
+      '<div class="fit-item-head">' +
+        '<span class="fit-item-title">' + (it.datum || '?') + ' · ' + escapeHtml(it._sport) + ' ' + tag + '</span>' +
+        '<button class="fit-item-rm" onclick="removeFitItem(\'' + fi.id + '\')">×</button>' +
+      '</div>' +
+      '<div class="fit-item-meta">' + escapeHtml(fi.file.name) + '</div>' +
+      '<div class="fit-item-stats">' + statsList.join(' · ') + '</div>' +
+      '<div class="fit-item-row">' +
+        '<div><label>Sessie-type</label>' +
+          '<select onchange="updateFitItem(\'' + fi.id + '\',\'sessie_type\',this.value)">' + sessOpts + '</select></div>' +
+        '<div><label>Status</label>' +
+          '<select onchange="updateFitItem(\'' + fi.id + '\',\'voltooid\',this.value===\'true\')">' +
+            '<option value="true" ' + (it.voltooid ? 'selected' : '') + '>✅ Gedaan</option>' +
+            '<option value="false" ' + (!it.voltooid ? 'selected' : '') + '>🚫 Gemist</option>' +
+          '</select></div>' +
+      '</div>' +
+      '<label style="margin-top:6px">Feedback (optioneel)</label>' +
+      '<textarea onchange="updateFitItem(\'' + fi.id + '\',\'feedback\',this.value)" placeholder="bv. voelde licht, eerste keer na blessure…">' + escapeHtml(it.feedback || '') + '</textarea>' +
+    '</div>';
+  }).join('');
+}
+
+function updateFitItem(id, field, value) {
+  const fi = fitItems.find(x => x.id === id);
+  if (!fi || !fi.item) return;
+  fi.item[field] = value;
+}
+
+function removeFitItem(id) {
+  fitItems = fitItems.filter(x => x.id !== id);
+  renderFitItems();
+  const ready = fitItems.filter(x => x.status === 'ready').length;
+  document.getElementById('fitImportBtn').disabled = ready === 0;
+  if (fitItems.length === 0) setImportMsg('');
+}
+
+async function processFitImport() {
+  const toImport = fitItems.filter(x => x.status === 'ready' && x.item && x.item.datum && x.item.sessie_type);
+  const skipped = fitItems.filter(x => x.status === 'ready' && (!x.item.datum || !x.item.sessie_type));
+  if (toImport.length === 0) {
+    setImportMsg('Vul voor elke sessie een datum en sessie-type in (' + skipped.length + ' onvolledig)', 'err');
+    return;
+  }
+  setImportMsg('Bezig…');
+  const results = [];
+  for (const fi of toImport) {
+    const r = await importSingle(fi.item);
+    results.push(r);
+  }
+  await saveState();
+
+  const ok = results.filter(r => r.success).length;
+  const fail = results.filter(r => !r.success);
+  let msg = '✅ ' + ok + ' sessie(s) geïmporteerd';
+  if (fail.length > 0) {
+    msg += ' · ❌ ' + fail.length + ' fout: ' + fail.map(f => f.error).join('; ');
+    setImportMsg(msg, 'err');
+  } else {
+    setImportMsg(msg, 'ok');
+    const firstOk = results.find(r => r.success);
+    if (firstOk && firstOk.weekId) {
+      setTimeout(function() {
+        renderWeek(firstOk.weekId);
+        fitItems = [];
+        closeImport();
+      }, 900);
+    }
+  }
 }
 
 // Vind weekId + dagindex bij een ISO-datum
@@ -3210,55 +3495,6 @@ function findCurrentDay(weekId, sid, originalDay) {
   return originalDay;
 }
 
-async function processImport() {
-  const raw = document.getElementById('importText').value.trim();
-  if (!raw) {
-    setImportMsg('Plak eerst een JSON-blok', 'err');
-    return;
-  }
-
-  // Probeer ```json ... ``` te strippen als het er omheen staat
-  let cleaned = raw;
-  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-
-  let parsed;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch(e) {
-    setImportMsg('Ongeldig JSON: ' + e.message, 'err');
-    return;
-  }
-
-  // Normaliseer naar array
-  const items = Array.isArray(parsed) ? parsed : [parsed];
-
-  const results = [];
-  for (const item of items) {
-    const r = await importSingle(item);
-    results.push(r);
-  }
-
-  await saveState();
-
-  const ok = results.filter(r => r.success).length;
-  const fail = results.filter(r => !r.success);
-
-  let msg = '✅ ' + ok + ' sessie(s) geïmporteerd';
-  if (fail.length > 0) {
-    msg += ' · ❌ ' + fail.length + ' fout: ' + fail.map(f => f.error).join('; ');
-    setImportMsg(msg, 'err');
-  } else {
-    setImportMsg(msg, 'ok');
-    // Navigeer naar de week van het eerste geïmporteerde item
-    const firstOk = results.find(r => r.success);
-    if (firstOk && firstOk.weekId) {
-      setTimeout(function() {
-        renderWeek(firstOk.weekId);
-        closeImport();
-      }, 800);
-    }
-  }
-}
 
 // Mismatch-modal state
 let mismatchResolver = null;
