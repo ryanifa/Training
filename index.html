@@ -630,14 +630,44 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
       <textarea class="modal-textarea" id="workoutText" readonly style="font-family:monospace;font-size:12px;min-height:200px"></textarea>
       <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
         <button class="modal-btn" onclick="copyWorkoutText()" style="background:#EEEDFE;border-color:#7F77DD;color:#534AB7">📋 Kopieer tekst</button>
-        <button class="modal-btn" onclick="downloadWorkoutTcx()" style="background:#DFF4EA;border-color:#0F6E56;color:#0F6E56">⬇️ Download .TCX voor Garmin</button>
+        <button class="modal-btn" onclick="openGarminPushModal()" style="background:#DFF4EA;border-color:#0F6E56;color:#0F6E56">🚀 Push naar Garmin Connect</button>
       </div>
-      <div class="modal-meta" style="margin-top:10px"><strong>Tip:</strong> Open Garmin Connect → Trainingen → Importeer training, en kies het .TCX-bestand. Garmin Connect accepteert geen FIT-workouts via de webupload (alleen TCX of JSON).</div>
+      <div class="modal-meta" style="margin-top:10px"><strong>Tip:</strong> Push gebruikt Garmin's eigen workout-API via een DevTools-snippet op connect.garmin.com (geen wachtwoord nodig in deze app).</div>
       <div class="modal-meta" id="workoutMsg" style="margin-top:6px"></div>
     </div>
     <div class="modal-footer">
       <div style="flex:1"></div>
       <button class="modal-btn" onclick="closeWorkout()">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="garminPushModal" onclick="onGarminPushBgClick(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">🚀 Push naar Garmin Connect</div>
+        <div class="modal-sub">Via DevTools-snippet op connect.garmin.com</div>
+      </div>
+      <button class="modal-close" onclick="closeGarminPush()">×</button>
+    </div>
+    <div class="modal-body">
+      <ol style="font-size:13px;line-height:1.6;padding-left:20px;margin:0 0 10px 0">
+        <li>Open <a href="https://connect.garmin.com/modern/workouts" target="_blank" rel="noopener" style="color:#0F6E56;font-weight:bold">connect.garmin.com/modern/workouts</a> in een nieuw tabblad (zorg dat je ingelogd bent).</li>
+        <li>Open DevTools: druk op <kbd style="background:#eee;padding:1px 6px;border-radius:3px;font-family:monospace;font-size:11px">F12</kbd> (of <kbd style="background:#eee;padding:1px 6px;border-radius:3px;font-family:monospace;font-size:11px">⌘⌥I</kbd> op Mac) en kies tab <strong>Console</strong>.</li>
+        <li>Klik "Kopieer snippet" hieronder, plak in de console, druk op <kbd style="background:#eee;padding:1px 6px;border-radius:3px;font-family:monospace;font-size:11px">Enter</kbd>.</li>
+        <li>Na ±1 seconde verschijnt <code style="background:#eee;padding:1px 4px;border-radius:3px;font-size:11px">✅ workoutId: …</code> en is de workout zichtbaar in je Garmin Connect lijst.</li>
+      </ol>
+      <textarea class="modal-textarea" id="garminSnippet" readonly style="font-family:monospace;font-size:11px;min-height:180px;background:#1a1a1a;color:#d4d4d4;border-color:#333"></textarea>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <button class="modal-btn" onclick="copyGarminSnippet()" style="background:#DFF4EA;border-color:#0F6E56;color:#0F6E56">📋 Kopieer snippet</button>
+      </div>
+      <div class="modal-meta" id="garminPushMsg" style="margin-top:6px"></div>
+      <div class="modal-meta" style="margin-top:10px;font-size:11px;color:#888"><strong>Privacy:</strong> Je Garmin-wachtwoord komt nooit in deze app. Het snippet draait in jouw eigen browsersessie op connect.garmin.com en gebruikt je bestaande inlog-cookies.</div>
+    </div>
+    <div class="modal-footer">
+      <div style="flex:1"></div>
+      <button class="modal-btn" onclick="closeGarminPush()">Sluiten</button>
     </div>
   </div>
 </div>
@@ -2969,129 +2999,199 @@ async function copyWorkoutText() {
 }
 
 // ============================================================
-// .TCX EXPORT VOOR GARMIN CONNECT
+// GARMIN CONNECT WORKOUT PUSH (DEVTOOLS-SNIPPET)
 // ============================================================
-// Garmin Connect's web-import (Trainingen → Importeer training)
-// accepteert TCX en JSON — geen FIT workouts. TCX is een eenvoudig
-// XML-formaat dat door Garmin én andere platformen (TrainingPeaks,
-// intervals.icu) wordt geaccepteerd.
-function downloadWorkoutTcx() {
+// Garmin Connect heeft geen UI om workout-plannen via een bestand te
+// importeren. De officiële weg gaat via Garmin's interne workout-service
+// API (POST /workout-service/workout) die credentials uit de browser-
+// sessie gebruikt. Een DevTools-snippet draait same-origin op
+// connect.garmin.com en stuurt de workout direct in de gebruikers-
+// account — geen wachtwoord in deze app, geen backend.
+//
+// Schema-bron: mkuthan/garmin-workouts, Pythe1337N/garmin-connect en
+// brunosantos/garmin-workouts-mcp — kruis-gevalideerd.
+
+function openGarminPushModal() {
   if (!currentWorkout) return;
   try {
-    const xml = buildTcxWorkout(currentWorkout);
-    const blob = new Blob([xml], { type: 'application/vnd.garmin.tcx+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const safeName = currentWorkout.sess.label.replace(/[^a-z0-9]+/gi, '_') +
-                     '_' + currentWorkout.dayLabel.replace(/\s+/g, '_');
-    a.href = url;
-    a.download = safeName + '.tcx';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    let msg = '⬇️ .TCX gedownload — Garmin Connect → Trainingen → Importeer training';
-    if (currentWorkout.discipline === 'swim') {
-      msg += '. Let op: Garmin TCX-import ondersteunt geen zwemworkouts; deze upload zal waarschijnlijk falen.';
-    } else if (currentWorkout.discipline === 'str') {
-      msg += '. Let op: Garmin TCX-import is beperkt voor krachttraining; importeert als generieke workout.';
-    }
-    document.getElementById('workoutMsg').textContent = msg;
-    document.getElementById('workoutMsg').style.color = '#0F6E56';
+    const payload = buildGarminWorkoutPayload(currentWorkout);
+    const snippet = buildGarminPushSnippet(payload);
+    document.getElementById('garminSnippet').value = snippet;
+    document.getElementById('garminPushMsg').textContent = '';
+    document.getElementById('garminPushModal').classList.add('active');
   } catch(e) {
-    console.error('TCX export error:', e);
-    document.getElementById('workoutMsg').textContent =
-      '❌ TCX export mislukt: ' + e.message;
+    console.error('Garmin push prep error:', e);
+    document.getElementById('workoutMsg').textContent = '❌ Kon snippet niet genereren: ' + e.message;
     document.getElementById('workoutMsg').style.color = '#d32f2f';
   }
 }
 
-function tcxEscape(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
-                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-                  .replace(/'/g, '&apos;');
+function closeGarminPush() {
+  document.getElementById('garminPushModal').classList.remove('active');
 }
 
-function tcxSportElement(discipline) {
-  // TCX workout root: Running | Biking | Other. Geen Swimming-element.
-  if (discipline === 'run') return 'Running';
-  if (discipline === 'bike') return 'Biking';
-  return 'Other';
+function onGarminPushBgClick(ev) {
+  if (ev.target.id === 'garminPushModal') closeGarminPush();
 }
 
-function tcxStepLabel(s) {
-  const map = { warmup: 'Warm-up', cooldown: 'Cool-down',
-                recovery: 'Recovery', interval: 'Interval', steady: 'Steady' };
-  const base = map[s.kind] || 'Step';
-  // Naam mag in Garmin Connect max 15 chars zijn
-  return (s.name && s.name.length <= 15) ? s.name : base;
-}
-
-function tcxStepIntensity(kind) {
-  // TCX Intensity_t enum: Active | Resting
-  return kind === 'recovery' ? 'Resting' : 'Active';
-}
-
-function tcxDuration(s) {
-  if (s.duration.minutes > 0) {
-    const sec = Math.max(1, Math.round(s.duration.minutes * 60));
-    return '<Duration xsi:type="Time_t"><Seconds>' + sec + '</Seconds></Duration>';
+async function copyGarminSnippet() {
+  const text = document.getElementById('garminSnippet').value;
+  try {
+    await navigator.clipboard.writeText(text);
+    const msg = document.getElementById('garminPushMsg');
+    msg.textContent = '✅ Snippet gekopieerd — plak in DevTools console op connect.garmin.com';
+    msg.style.color = '#0F6E56';
+  } catch(e) {
+    document.getElementById('garminSnippet').select();
+    document.execCommand('copy');
+    const msg = document.getElementById('garminPushMsg');
+    msg.textContent = '✅ Gekopieerd (via fallback)';
+    msg.style.color = '#0F6E56';
   }
-  if (s.duration.distance_m > 0) {
-    return '<Duration xsi:type="Distance_t"><Meters>' +
-           Math.round(s.duration.distance_m) + '</Meters></Duration>';
+}
+
+// ---- Garmin JSON-payload builder ----
+
+const GARMIN_SPORT = {
+  run:  { sportTypeId: 1, sportTypeKey: 'running',           displayOrder: 1 },
+  bike: { sportTypeId: 2, sportTypeKey: 'cycling',           displayOrder: 2 },
+  swim: { sportTypeId: 4, sportTypeKey: 'lap_swimming',      displayOrder: 4 },
+  str:  { sportTypeId: 4, sportTypeKey: 'strength_training', displayOrder: 4 }
+};
+
+const GARMIN_STEP_TYPE = {
+  warmup:   { stepTypeId: 1, stepTypeKey: 'warmup',   displayOrder: 1 },
+  cooldown: { stepTypeId: 2, stepTypeKey: 'cooldown', displayOrder: 2 },
+  interval: { stepTypeId: 3, stepTypeKey: 'interval', displayOrder: 3 },
+  recovery: { stepTypeId: 4, stepTypeKey: 'recovery', displayOrder: 4 },
+  rest:     { stepTypeId: 5, stepTypeKey: 'rest',     displayOrder: 5 },
+  steady:   { stepTypeId: 7, stepTypeKey: 'other',    displayOrder: 7 }
+};
+
+const GARMIN_NO_TARGET = { workoutTargetTypeId: 1, workoutTargetTypeKey: 'no.target', displayOrder: 1 };
+
+const GARMIN_END_TIME     = { conditionTypeId: 2, conditionTypeKey: 'time',                 displayOrder: 2, displayable: true  };
+const GARMIN_END_DISTANCE = { conditionTypeId: 3, conditionTypeKey: 'distance',             displayOrder: 3, displayable: true  };
+const GARMIN_END_LAP      = { conditionTypeId: 1, conditionTypeKey: 'lap.button',           displayOrder: 1, displayable: true  };
+const GARMIN_END_ITER     = { conditionTypeId: 7, conditionTypeKey: 'iterations.completed', displayOrder: 7, displayable: false };
+
+function buildGarminWorkoutPayload(workout) {
+  const sport = GARMIN_SPORT[workout.discipline] || GARMIN_SPORT.run;
+  // Garmin Connect: workout-naam max ~30 tekens werkt prima
+  const name = (workout.sess.label || 'Workout').substring(0, 30);
+  const ctx = { order: 1, group: 0 };
+  const steps = [];
+  for (const s of workout.steps) {
+    const reps = Math.max(1, s.repeats || 1);
+    if (reps === 1) {
+      steps.push(buildGarminExecutable(s, ctx, null));
+    } else {
+      ctx.group++;
+      const groupId = ctx.group;
+      const wrapperOrder = ctx.order++;
+      const inner = buildGarminExecutable(s, ctx, groupId);
+      steps.push({
+        type: 'RepeatGroupDTO',
+        stepId: null,
+        stepOrder: wrapperOrder,
+        childStepId: groupId,
+        stepType: { stepTypeId: 6, stepTypeKey: 'repeat', displayOrder: 6 },
+        endCondition: GARMIN_END_ITER,
+        endConditionValue: null,
+        numberOfIterations: reps,
+        smartRepeat: false,
+        skipLastRestStep: false,
+        workoutSteps: [inner]
+      });
+    }
   }
-  return '<Duration xsi:type="UserInitiated_t"></Duration>';
-}
 
-function tcxBuildSingleStep(s, stepId) {
-  const name = tcxEscape(tcxStepLabel(s));
-  return '<Step xsi:type="Step_t">\n' +
-         '        <StepId>' + stepId + '</StepId>\n' +
-         '        <Name>' + name + '</Name>\n' +
-         '        ' + tcxDuration(s) + '\n' +
-         '        <Intensity>' + tcxStepIntensity(s.kind) + '</Intensity>\n' +
-         '        <Target xsi:type="None" />\n' +
-         '      </Step>';
-}
-
-function tcxBuildStep(s, idAllocator) {
-  const reps = Math.max(1, s.repeats || 1);
-  if (reps === 1) {
-    return tcxBuildSingleStep(s, idAllocator.next());
+  const payload = {
+    workoutId: null,
+    ownerId: null,
+    workoutName: name,
+    description: 'Gegenereerd door Ryan Douglas Training-app',
+    updatedDate: null,
+    createdDate: null,
+    sportType: sport,
+    subSportType: null,
+    trainingPlanId: null,
+    author: null,
+    shared: false,
+    estimated: false,
+    workoutSegments: [{
+      segmentOrder: 1,
+      sportType: sport,
+      workoutSteps: steps
+    }]
+  };
+  if (workout.discipline === 'swim') {
+    payload.poolLength = 25;
+    payload.poolLengthUnit = { unitId: 1, unitKey: 'meter', factor: 100.0 };
   }
-  // Repeat_t wikkelt één Child om reps keer uit te voeren
-  const wrapperId = idAllocator.next();
-  const innerId = idAllocator.next();
-  const inner = tcxBuildSingleStep(s, innerId);
-  return '<Step xsi:type="Repeat_t">\n' +
-         '        <StepId>' + wrapperId + '</StepId>\n' +
-         '        <Repetitions>' + reps + '</Repetitions>\n' +
-         '        <Child>' + inner + '</Child>\n' +
-         '      </Step>';
+  return payload;
 }
 
-function buildTcxWorkout(workout) {
-  const sport = tcxSportElement(workout.discipline);
-  // Garmin Connect: workout-naam max 15 chars
-  const rawName = workout.sess.label.substring(0, 15);
-  const name = tcxEscape(rawName);
-  let nextId = 1;
-  const allocator = { next() { return nextId++; } };
-  const stepsXml = workout.steps.map(s => tcxBuildStep(s, allocator)).join('\n      ');
-
-  return '<?xml version="1.0" encoding="UTF-8"?>\n' +
-         '<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2"\n' +
-         '                        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"\n' +
-         '                        xsi:schemaLocation="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2 http://www.garmin.com/xmlschemas/TrainingCenterDatabasev2.xsd">\n' +
-         '  <Workouts>\n' +
-         '    <' + sport + '>\n' +
-         '      <Name>' + name + '</Name>\n' +
-         '      ' + stepsXml + '\n' +
-         '    </' + sport + '>\n' +
-         '  </Workouts>\n' +
-         '</TrainingCenterDatabase>\n';
+function buildGarminExecutable(s, ctx, childGroupId) {
+  let endCond, endVal;
+  if (s.duration && s.duration.minutes > 0) {
+    endCond = GARMIN_END_TIME;
+    endVal = Math.round(s.duration.minutes * 60);
+  } else if (s.duration && s.duration.distance_m > 0) {
+    endCond = GARMIN_END_DISTANCE;
+    endVal = Math.round(s.duration.distance_m);
+  } else {
+    endCond = GARMIN_END_LAP;
+    endVal = null;
+  }
+  const stepType = GARMIN_STEP_TYPE[s.kind] || GARMIN_STEP_TYPE.steady;
+  return {
+    type: 'ExecutableStepDTO',
+    stepId: null,
+    stepOrder: ctx.order++,
+    childStepId: childGroupId,
+    description: s.name || null,
+    stepType: stepType,
+    endCondition: endCond,
+    endConditionValue: endVal,
+    preferredEndConditionUnit: null,
+    endConditionCompare: null,
+    targetType: GARMIN_NO_TARGET,
+    targetValueOne: null,
+    targetValueTwo: null,
+    targetValueUnit: null,
+    zoneNumber: null,
+    secondaryTargetType: null,
+    secondaryTargetValueOne: null,
+    secondaryTargetValueTwo: null,
+    secondaryZoneNumber: null
+  };
 }
+
+function buildGarminPushSnippet(payload) {
+  const json = JSON.stringify(payload, null, 2);
+  return '// 🚀 Push workout naar Garmin Connect — plak in DevTools op connect.garmin.com\n' +
+         '(async () => {\n' +
+         '  const workout = ' + json + ';\n' +
+         '  try {\n' +
+         '    const r = await fetch("/workout-service/workout", {\n' +
+         '      method: "POST",\n' +
+         '      credentials: "include",\n' +
+         '      headers: {\n' +
+         '        "Content-Type": "application/json",\n' +
+         '        "NK": "NT",\n' +
+         '        "X-Requested-With": "XMLHttpRequest"\n' +
+         '      },\n' +
+         '      body: JSON.stringify(workout)\n' +
+         '    });\n' +
+         '    if (!r.ok) { console.error("❌ HTTP " + r.status, await r.text()); return; }\n' +
+         '    const data = await r.json();\n' +
+         '    console.log("✅ workoutId:", data.workoutId, "—", data.workoutName);\n' +
+         '    console.log("Bekijk: https://connect.garmin.com/modern/workout/" + data.workoutId);\n' +
+         '  } catch (e) { console.error("❌", e); }\n' +
+         '})();';
+}
+
 
 // ============================================================
 // IMPORT MODAL — JSON van trainingsanalyse importeren
