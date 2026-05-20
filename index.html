@@ -3173,13 +3173,39 @@ function buildGarminPushSnippet(payload) {
   return '// 🚀 Push workout naar Garmin Connect — plak in DevTools op connect.garmin.com\n' +
          '(async () => {\n' +
          '  const workout = ' + json + ';\n' +
+         '  async function getCsrf() {\n' +
+         '    for (const store of [sessionStorage, localStorage]) {\n' +
+         '      for (let i = 0; i < store.length; i++) {\n' +
+         '        const k = store.key(i);\n' +
+         '        if (/csrf/i.test(k)) {\n' +
+         '          const v = store.getItem(k);\n' +
+         '          if (v) {\n' +
+         '            try { const j = JSON.parse(v); const t = j.token || j.csrfToken || j.csrf; if (t) return t; } catch(_) {}\n' +
+         '            if (v.length > 20 && v.length < 200 && !/\\s/.test(v)) return v.replace(/^"|"$/g, "");\n' +
+         '          }\n' +
+         '        }\n' +
+         '      }\n' +
+         '    }\n' +
+         '    try {\n' +
+         '      const html = await fetch("/modern/workouts", { credentials: "include" }).then(r => r.text());\n' +
+         '      const m = html.match(/"csrf[_-]?token"\\s*:\\s*"([^"]+)"/i) ||\n' +
+         '                html.match(/csrf[_-]?token["\\\']?\\s*[:=]\\s*["\\\']([^"\\\']+)/i) ||\n' +
+         '                html.match(/<meta\\s+name=["\\\']csrf[_-]?token["\\\']\\s+content=["\\\']([^"\\\']+)/i);\n' +
+         '      if (m) return m[1];\n' +
+         '    } catch(_) {}\n' +
+         '    const manual = prompt("CSRF-token niet auto-gevonden.\\n\\nPak m uit DevTools → Network → een POST → Request Headers → \\"Connect-Csrf-Token\\" en plak hier:");\n' +
+         '    if (!manual) throw new Error("CSRF-token vereist");\n' +
+         '    return manual.trim();\n' +
+         '  }\n' +
          '  try {\n' +
-         '    const r = await fetch("/workout-service/workout", {\n' +
+         '    const csrf = await getCsrf();\n' +
+         '    console.log("🔑 CSRF-token:", csrf.slice(0, 8) + "…");\n' +
+         '    const r = await fetch("/gc-api/workout-service/workout", {\n' +
          '      method: "POST",\n' +
          '      credentials: "include",\n' +
          '      headers: {\n' +
          '        "Content-Type": "application/json",\n' +
-         '        "NK": "NT",\n' +
+         '        "Connect-Csrf-Token": csrf,\n' +
          '        "X-Requested-With": "XMLHttpRequest"\n' +
          '      },\n' +
          '      body: JSON.stringify(workout)\n' +
@@ -3883,5 +3909,6 @@ if (document.readyState === 'loading') {
   init();
 }
 </script>
+<div id="appVersion" style="text-align:center;padding:12px 8px 20px;font-size:11px;color:#999;font-family:monospace">v__BUILD_VERSION__</div>
 </body>
 </html>
