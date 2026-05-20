@@ -116,6 +116,12 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 .session-pill.missed { opacity: 0.5; background: #f0f0f0 !important; border-color: #999 !important; color: #777 !important; }
 .session-pill.missed .pill-name { text-decoration: line-through; color: #777; }
 .session-pill.missed .pill-meta { text-decoration: line-through; color: #999; }
+.session-pill.day-rest { opacity: 0.6; background: #EAF4FD !important; border-color: #4fc3f7 !important; color: #185FA5 !important; }
+.day-col.is-rest { background: #F5FAFE; }
+.day-col.is-rest .day-col-header { background: #E3F2FD; }
+.day-rest-btn { background: none; border: 0; cursor: pointer; opacity: 0.25; font-size: 13px; padding: 0 4px; line-height: 1; margin-left: 4px; vertical-align: middle; }
+.day-rest-btn:hover { opacity: 0.7; }
+.day-rest-btn.active { opacity: 1; }
 .pill-name { font-weight: bold; margin-bottom: 2px; }
 .pill-meta { font-size: 11px; opacity: 0.8; }
 .pill-done { position: absolute; top: 4px; right: 6px; font-size: 13px; }
@@ -1478,6 +1484,7 @@ let state = {
   missed: {},
   moves: {},
   skips: {},
+  rest: {},
   feedback: {},
   metrics: {},
   strength: [],
@@ -1560,6 +1567,7 @@ function buildStateBlob() {
     missed: state.missed,
     moves: state.moves,
     skips: state.skips,
+    rest: state.rest,
     feedback: state.feedback,
     metrics: state.metrics,
     strength: state.strength,
@@ -1573,6 +1581,7 @@ function applyStateBlob(saved) {
   if (saved.missed && typeof saved.missed === 'object') state.missed = saved.missed;
   if (saved.moves && typeof saved.moves === 'object') state.moves = saved.moves;
   if (saved.skips && typeof saved.skips === 'object') state.skips = saved.skips;
+  if (saved.rest && typeof saved.rest === 'object') state.rest = saved.rest;
   if (saved.feedback && typeof saved.feedback === 'object') state.feedback = saved.feedback;
   if (saved.metrics && typeof saved.metrics === 'object') state.metrics = saved.metrics;
   if (Array.isArray(saved.strength)) state.strength = saved.strength;
@@ -2213,6 +2222,7 @@ function buildCoachSystemPrompt() {
   const stateCtx = {
     done: state.done || {},
     missed: state.missed || {},
+    rest: state.rest || {},
     moves: state.moves || {},
     skips: state.skips || {},
     feedback: state.feedback || {},
@@ -2230,6 +2240,7 @@ Doel-races 2026:
 Je hebt toegang tot zijn trainingsdata hieronder. State-conventies:
 - done: { "weekId:dayIndex:sessionId": true } voltooide sessies
 - missed: gemiste sessies (zelfde sleutel-structuur)
+- rest: { "weekId:dayIndex": true } BEWUSTE rustdag (medisch/preventief advies, herstel). Geplande sessies op deze dagen NIET als gemist tellen — het was een welbewuste keuze, niet een discipline-gat.
 - moves: sessies die naar een andere dag verplaatst zijn
 - skips: sessies vervangen door iets anders
 - feedback: vrije-tekst notities per sessie { text, updatedAt }
@@ -2519,10 +2530,11 @@ function renderWeek(key) {
       const sessKey = activeWeek + ':' + di + ':' + sid;
       const isDone = day.done.includes(sid);
       const isMissed = state.missed[sessKey] === true;
+      const isDayRestForPill = state.rest[activeWeek + ':' + di] === true;
       const isMoving = moveMode && moveMode.sid === sid && moveMode.fromDay === di;
       const hasFb = !!(state.feedback[sessKey] && state.feedback[sessKey].text);
       const displayDur = getDisplayDur(activeWeek, di, sid);
-      const stateClass = isMissed ? ' missed' : (isDone ? ' done' : '');
+      const stateClass = isDone ? ' done' : (isMissed ? ' missed' : (isDayRestForPill ? ' day-rest' : ''));
       return `<div class="session-pill p-${sess.type}${stateClass}${isMoving?' moving':''}"
         draggable="true"
         data-sid="${sid}"
@@ -2531,14 +2543,17 @@ function renderWeek(key) {
         ondragstart="onDragStart(event,'${sid}',${di})"
       >
         ${hasFb ? '<span class="pill-fb" title="Heeft feedback">📝</span>' : ''}
-        ${isMissed ? '<span class="pill-missed" title="Gemist">🚫</span>' : (isDone ? '<span class="pill-done">✅</span>' : '')}
+        ${isDone ? '<span class="pill-done">✅</span>' : (isMissed ? '<span class="pill-missed" title="Gemist">🚫</span>' : (isDayRestForPill ? '<span class="pill-missed" title="Bewuste rustdag">🛏</span>' : ''))}
         <div class="pill-name">${sess.label}</div>
         <div class="pill-meta">${displayDur}</div>
       </div>`;
     }).join('');
 
     const isMoveTarget = moveMode && moveMode.fromDay !== di;
-    return `<div class="day-col${isMoveTarget ? ' move-target' : ''}"
+    const isDayRest = state.rest[activeWeek + ':' + di] === true;
+    const restBtn = `<button class="day-rest-btn${isDayRest ? ' active' : ''}" onclick="event.stopPropagation(); toggleDayRest(${di})" title="${isDayRest ? 'Rustdag aan — klik om uit te zetten' : 'Markeer als bewuste rustdag'}">🛏</button>`;
+    const emptyLabel = isDayRest ? '🛏 Bewuste rust' : 'Rust';
+    return `<div class="day-col${isMoveTarget ? ' move-target' : ''}${isDayRest ? ' is-rest' : ''}"
       ${isMoveTarget ? `onclick="completeMove(${di})"` : ''}
       ondragover="onDragOver(event)"
       ondragleave="onDragLeave(event)"
@@ -2546,10 +2561,10 @@ function renderWeek(key) {
     >
       <div class="day-col-header">
         <div class="day-col-name">${day.name}</div>
-        <div class="day-col-date">${day.date}</div>
+        <div class="day-col-date">${day.date}${restBtn}</div>
       </div>
       <div class="day-col-body">
-        ${pillsHtml || `<div class="empty-day">Rust</div>`}
+        ${pillsHtml || `<div class="empty-day">${emptyLabel}</div>`}
       </div>
     </div>`;
   }).join('');
@@ -3668,6 +3683,17 @@ async function toggleDone(sid, di) {
   showDetail(sid, di);
 }
 
+async function toggleDayRest(di) {
+  const key = activeWeek + ':' + di;
+  if (state.rest[key]) {
+    delete state.rest[key];
+  } else {
+    state.rest[key] = true;
+  }
+  await saveState();
+  renderWeek(activeWeek);
+}
+
 async function toggleMissed(sid, di) {
   const key = activeWeek + ':' + di + ':' + sid;
   if (state.missed[key]) {
@@ -3784,6 +3810,7 @@ function renderStatus() {
     const total = day.sessions.length;
     const doneCount = day.done.length;
     const missedCount = day.sessions.filter(sid => state.missed[wkId + ':' + di + ':' + sid] === true).length;
+    const isDayRest = state.rest[wkId + ':' + di] === true;
     const allDone = total > 0 && doneCount >= total;
     const allMissed = total > 0 && missedCount >= total;
     const partialDone = doneCount > 0 && doneCount < total;
@@ -3791,7 +3818,11 @@ function renderStatus() {
     let icon = '⬜';
     let statusLabel = '';
     let statusColor = '#888';
-    if (isPast) {
+    if (isDayRest) {
+      icon = '🛏';
+      statusLabel = doneCount > 0 ? 'Bewuste rust (' + doneCount + ' toch gedaan)' : 'Bewuste rust';
+      statusColor = '#185FA5';
+    } else if (isPast) {
       if (total === 0) {
         icon = '💤'; statusLabel = 'Rust';
       } else if (allDone) {
