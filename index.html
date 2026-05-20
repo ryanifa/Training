@@ -3024,19 +3024,39 @@ function buildFitWorkout(workout) {
   ]);
   chunks.push(fileIdDef);
 
-  // file_id data: type=5 (workout), manufacturer=255 (development), product=0, serial=0, time_created=now
+  // file_id data: type=5 (workout), manufacturer=1 (garmin), product=0, serial=0, time_created=now
   // FIT time = seconds since UTC 00:00 Dec 31 1989
   const fitEpoch = Date.UTC(1989, 11, 31) / 1000;
   const nowFit = Math.floor(Date.now() / 1000) - fitEpoch;
   const fileIdData = new Uint8Array([
     0x00, // header: data message, local type 0
     0x05, // type = workout
-    0xff, 0x00, // manufacturer = 255 (dev/garmin defaults to garmin)
+    0x01, 0x00, // manufacturer = 1 (garmin) — Garmin Connect weigert development (255)
     0x00, 0x00, // product
     0x00, 0x00, 0x00, 0x00, // serial
     nowFit & 0xff, (nowFit >> 8) & 0xff, (nowFit >> 16) & 0xff, (nowFit >> 24) & 0xff,
   ]);
   chunks.push(fileIdData);
+
+  // file_creator message (global 49) — sommige Garmin-validators verwachten deze
+  const creatorDef = new Uint8Array([
+    0x43, // definition, local type 3
+    0x00,
+    0x00,
+    0x31, 0x00, // global 49
+    0x02,
+    // software_version (0): 2 bytes uint16
+    0x00, 0x02, 0x84,
+    // hardware_version (1): 1 byte uint8
+    0x01, 0x01, 0x02,
+  ]);
+  chunks.push(creatorDef);
+  const creatorData = new Uint8Array([
+    0x03, // data, local type 3
+    0x64, 0x00, // software_version = 100
+    0x00, // hardware_version = 0
+  ]);
+  chunks.push(creatorData);
 
   // workout message definition (global 26)
   // Fields: sport (4), num_valid_steps (6), wkt_name (8) - 16 bytes string
@@ -3125,7 +3145,7 @@ function buildFitWorkout(workout) {
     stepData[5] = (durValue >> 8) & 0xff;
     stepData[6] = (durValue >> 16) & 0xff;
     stepData[7] = (durValue >> 24) & 0xff;
-    stepData[8] = 0; // target_type 0 = open (geen specifieke target)
+    stepData[8] = 2; // target_type 2 = open (geen specifieke target — 0 = speed!)
     stepData[9] = intensity;
     chunks.push(stepData);
   });
@@ -3149,15 +3169,17 @@ function buildFitWorkout(workout) {
   header[9] = 'F'.charCodeAt(0);
   header[10] = 'I'.charCodeAt(0);
   header[11] = 'T'.charCodeAt(0);
-  // Header CRC (2 bytes) — we laten op 0
-  header[12] = 0; header[13] = 0;
+  // Header CRC over bytes 0-11
+  const headerCrc = computeFitCrc(header, 0, 12);
+  header[12] = headerCrc & 0xff;
+  header[13] = (headerCrc >> 8) & 0xff;
 
   // Combineer header + records
   const withoutCrc = new Uint8Array(14 + dataSize);
   withoutCrc.set(header, 0);
   withoutCrc.set(recordsBytes, 14);
 
-  // CRC-16 (FIT spec: CRC-16/MCRF4XX equivalent)
+  // File CRC over volledige inhoud (header + data records)
   const crc = computeFitCrc(withoutCrc, 0, withoutCrc.length);
   const result = new Uint8Array(withoutCrc.length + 2);
   result.set(withoutCrc, 0);
