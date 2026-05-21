@@ -12,12 +12,15 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 .header-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .header h1 { font-size: 20px; font-weight: bold; margin-bottom: 4px; line-height: 1.2; }
 .header .sub { font-size: 13px; opacity: 0.7; }
+.header .sub-short { display: none; }
 .sync-btn { flex-shrink: 0; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: white; padding: 6px 12px; border-radius: 16px; font-size: 14px; cursor: pointer; line-height: 1; }
 .sync-btn:hover { background: rgba(255,255,255,0.16); }
 .sync-btn.connected { background: rgba(79,195,247,0.18); border-color: rgba(79,195,247,0.4); }
 .sync-btn.syncing { background: rgba(255,193,7,0.2); border-color: rgba(255,193,7,0.4); }
 
 .nav { display: flex; gap: 0; background: #16213e; border-bottom: 2px solid #0f3460; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+.nav-items { display: contents; }
+.nav-toggle { display: none; }
 .nav::-webkit-scrollbar { height: 3px; }
 .nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
 .nav-btn { padding: 10px 16px; font-size: 13px; font-weight: bold; cursor: pointer; color: #aaa; border: none; background: transparent; white-space: nowrap; border-bottom: 3px solid transparent; flex-shrink: 0; }
@@ -71,10 +74,18 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 @media (max-width: 600px) {
   body { font-size: 13px; }
   .header { padding: 12px 12px; }
-  .header h1 { font-size: 16px; }
-  .header .sub { font-size: 11px; }
+  .header h1 { font-size: 18px; }
+  .header .sub { font-size: 12px; }
+  .header .sub-long { display: none; }
+  .header .sub-short { display: block; }
   .sync-btn { padding: 5px 10px; font-size: 13px; }
-  .nav-btn { padding: 9px 10px; font-size: 12px; }
+  .nav { flex-wrap: wrap; overflow-x: visible; position: relative; }
+  .nav-toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 16px; background: #16213e; color: white; border: none; font-size: 15px; font-weight: bold; cursor: pointer; text-align: left; }
+  .nav-toggle .nav-toggle-current { opacity: 0.7; font-weight: normal; font-size: 13px; margin-left: auto; }
+  .nav-items { display: none; flex-direction: column; width: 100%; background: #16213e; }
+  .nav.open .nav-items { display: flex; }
+  .nav-btn { padding: 12px 16px; font-size: 14px; text-align: left; width: 100%; border-bottom: 1px solid rgba(255,255,255,0.06); border-left: 3px solid transparent; }
+  .nav-btn.active { border-bottom-color: rgba(255,255,255,0.06); border-left-color: #4fc3f7; background: rgba(79,195,247,0.08); }
   .nav-btn .nav-full { display: none; }
   .nav-btn .nav-short { display: inline; }
   .content { padding: 10px; }
@@ -355,20 +366,24 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
   <div class="header-row">
     <div style="min-width:0">
       <h1>Trainingsoverzicht — Ryan Douglas</h1>
-      <div class="sub">Seizoen 2026 · 70.3 Luxemburg 11 jul · IJsselmeer 30 aug · Zwarte Plasje 13 sep · Marathon 1 nov</div>
+      <div class="sub sub-long">Seizoen 2026 · 70.3 Luxemburg 11 jul · IJsselmeer 30 aug · Zwarte Plasje 13 sep · Marathon 1 nov</div>
+      <div class="sub sub-short" id="subShort">Seizoen 2026</div>
     </div>
     <button class="sync-btn" id="syncNavBtn" onclick="openSync()" title="Synchroniseren tussen apparaten">☁︎</button>
   </div>
 </div>
 
-<div class="nav">
-  <button class="nav-btn active" onclick="showPage('week', this)"><span class="nav-full">Weekplan</span><span class="nav-short">📅 Week</span></button>
-  <button class="nav-btn" onclick="showPage('seizoen', this)"><span class="nav-full">Seizoen</span><span class="nav-short">📊 Seizoen</span></button>
-  <button class="nav-btn" onclick="showPage('kracht', this)"><span class="nav-full">Kracht</span><span class="nav-short">💪 Kracht</span></button>
-  <button class="nav-btn" onclick="showPage('coach', this)"><span class="nav-full">Coach</span><span class="nav-short">💬 Coach</span></button>
-  <button class="nav-btn" onclick="showPage('zones', this)"><span class="nav-full">Zones</span><span class="nav-short">🎯 Zones</span></button>
-  <button class="nav-btn" onclick="showPage('doelen', this)"><span class="nav-full">Doelen</span><span class="nav-short">⭐ Doelen</span></button>
-  <button class="nav-btn" onclick="showPage('status', this)"><span class="nav-full">Status</span><span class="nav-short">📈 Status</span></button>
+<div class="nav" id="mainNav">
+  <button class="nav-toggle" onclick="toggleNav()" aria-label="Menu"><span>☰ Menu</span><span class="nav-toggle-current" id="navToggleCurrent">📅 Week</span></button>
+  <div class="nav-items">
+    <button class="nav-btn active" onclick="showPage('week', this)"><span class="nav-full">Weekplan</span><span class="nav-short">📅 Week</span></button>
+    <button class="nav-btn" onclick="showPage('seizoen', this)"><span class="nav-full">Seizoen</span><span class="nav-short">📊 Seizoen</span></button>
+    <button class="nav-btn" onclick="showPage('kracht', this)"><span class="nav-full">Kracht</span><span class="nav-short">💪 Kracht</span></button>
+    <button class="nav-btn" onclick="showPage('coach', this)"><span class="nav-full">Coach</span><span class="nav-short">💬 Coach</span></button>
+    <button class="nav-btn" onclick="showPage('zones', this)"><span class="nav-full">Zones</span><span class="nav-short">🎯 Zones</span></button>
+    <button class="nav-btn" onclick="showPage('doelen', this)"><span class="nav-full">Doelen</span><span class="nav-short">⭐ Doelen</span></button>
+    <button class="nav-btn" onclick="showPage('status', this)"><span class="nav-full">Status</span><span class="nav-short">📈 Status</span></button>
+  </div>
 </div>
 
 <div class="content">
@@ -1954,16 +1969,51 @@ function showPage(id, btn) {
   document.getElementById(id).classList.add('active');
   if(btn) {
     btn.classList.add('active');
-    // Zorg dat de actieve knop in beeld komt als de nav horizontaal scrollt
+    const shortLabel = btn.querySelector('.nav-short');
+    const lblEl = document.getElementById('navToggleCurrent');
+    if (shortLabel && lblEl) lblEl.textContent = shortLabel.textContent;
     if (btn.scrollIntoView) {
       try { btn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch(e) {}
     }
   }
+  const nav = document.getElementById('mainNav');
+  if (nav) nav.classList.remove('open');
   if(id === 'week') renderWeek(activeWeek);
   if(id === 'status') renderStatus();
   if(id === 'seizoen') renderSeason();
   if(id === 'kracht') initStrengthPage();
   if(id === 'coach') initCoachPage();
+}
+
+function toggleNav() {
+  document.getElementById('mainNav').classList.toggle('open');
+}
+
+function updateNextRaceSub() {
+  const races = [
+    { date: '2026-05-30', name: 'De Oversteek' },
+    { date: '2026-06-13', name: 'Oud Gastel' },
+    { date: '2026-06-20', name: 'Swimrun A\'dam' },
+    { date: '2026-06-28', name: 'Utrecht ⅓' },
+    { date: '2026-07-05', name: 'Rotterdam City Swim' },
+    { date: '2026-07-11', name: '70.3 Luxemburg' },
+    { date: '2026-07-18', name: 'Rondje Eilanden' },
+    { date: '2026-07-25', name: 'Rondje Pampus' },
+    { date: '2026-08-05', name: 'Sprint Apeldoorn' },
+    { date: '2026-08-06', name: 'Marken' },
+    { date: '2026-08-23', name: '¼ Triathlon Epe' },
+    { date: '2026-08-30', name: 'IJsselmeer' },
+    { date: '2026-09-13', name: 'Zwarte Plasje' },
+    { date: '2026-11-01', name: 'Marathon' },
+  ];
+  const today = new Date(); today.setHours(0,0,0,0);
+  const next = races.find(r => new Date(r.date) >= today);
+  const el = document.getElementById('subShort');
+  if (!el) return;
+  if (!next) { el.textContent = 'Seizoen 2026'; return; }
+  const days = Math.round((new Date(next.date) - today) / 86400000);
+  const dateNL = new Date(next.date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+  el.textContent = next.name + ' · ' + dateNL + ' · over ' + days + ' dgn';
 }
 
 // ============================================================
@@ -3880,6 +3930,7 @@ function init() {
   }
   try { renderStatus(); } catch(e) { console.warn('renderStatus:', e); }
   try { renderSeason(); } catch(e) { console.warn('renderSeason:', e); }
+  try { updateNextRaceSub(); } catch(e) { console.warn('updateNextRaceSub:', e); }
   updateSyncBadge();
 
   // 2. Probeer op de achtergrond state te laden
