@@ -2936,8 +2936,13 @@ function sessToWorkoutSteps(sess) {
     const repMatch = durStr.match(/(\d+)\s*[×x]/);
     if (repMatch) repeats = parseInt(repMatch[1]);
 
-    // Duur in minuten of afstand
-    const durData = parseDur(durStr);
+    // Duur in minuten of afstand — fallback naar name wanneer d alleen "4×" is
+    let durData = parseDur(durStr);
+    if (repeats > 1 && durData.minutes === 0 && durData.distance_m === 0) {
+      durData = parseDur(item.n || '');
+    }
+    // Rust tussen herhalingen uit note: "3 min herstel(draf)", "75 sec rust"
+    const restData = parseRestFromNote(item.note || '');
     // Pace/HR/vermogen/cadans targets uit metric + note
     const targets = parseMetric(metricStr, item.note || '');
 
@@ -2945,7 +2950,8 @@ function sessToWorkoutSteps(sess) {
       name: item.n,
       kind: kind,
       duration: durData, // {minutes, distance_m}
-      targets: targets,  // {pace, hr, watts}
+      restDuration: restData, // {minutes, distance_m}
+      targets: targets,  // {pace, hr, watts, ...}
       note: item.note || '',
       repeats: repeats
     });
@@ -3041,6 +3047,17 @@ function parseMetric(m, note) {
 function parsePaceSec(s) {
   const p = s.split(':');
   return parseInt(p[0]) * 60 + parseInt(p[1]);
+}
+
+// Detecteer rust/hersteldraf tussen herhalingen uit de note
+// Voorbeelden: "3 min hersteldraf (5:30/km) tussendoor", "75 sec rust", "60 sec rust"
+function parseRestFromNote(note) {
+  if (!note) return { minutes: 0, distance_m: 0 };
+  const restMin = note.match(/(\d+)\s*min\s*(?:hersteldraf|herstel|recovery|rust)/i);
+  if (restMin) return { minutes: parseInt(restMin[1]), distance_m: 0 };
+  const restSec = note.match(/(\d+)\s*sec\s*(?:hersteldraf|herstel|recovery|rust)/i);
+  if (restSec) return { minutes: parseInt(restSec[1]) / 60, distance_m: 0 };
+  return { minutes: 0, distance_m: 0 };
 }
 
 function workoutStepsToText(sess, dayLabel, steps) {
@@ -3201,7 +3218,11 @@ function buildGarminWorkoutPayload(workout) {
       ctx.group++;
       const groupId = ctx.group;
       const wrapperOrder = ctx.order++;
-      const inner = buildGarminExecutable(s, ctx, groupId);
+      const innerSteps = [buildGarminExecutable(s, ctx, groupId)];
+      const rest = s.restDuration;
+      if (rest && (rest.minutes > 0 || rest.distance_m > 0)) {
+        innerSteps.push(buildGarminRestStep(rest, ctx, groupId));
+      }
       steps.push({
         type: 'RepeatGroupDTO',
         stepId: null,
@@ -3213,7 +3234,7 @@ function buildGarminWorkoutPayload(workout) {
         numberOfIterations: reps,
         smartRepeat: false,
         skipLastRestStep: false,
-        workoutSteps: [inner]
+        workoutSteps: innerSteps
       });
     }
   }
@@ -3277,6 +3298,42 @@ function buildGarminExecutable(s, ctx, childGroupId) {
     secondaryTargetType: secondary ? secondary.type : null,
     secondaryTargetValueOne: secondary ? secondary.low : null,
     secondaryTargetValueTwo: secondary ? secondary.high : null,
+    secondaryZoneNumber: null
+  };
+}
+
+// Recovery-step binnen een repeat group ("3 min hersteldraf", "75 sec rust")
+function buildGarminRestStep(restDuration, ctx, childGroupId) {
+  let endCond, endVal;
+  if (restDuration.minutes > 0) {
+    endCond = GARMIN_END_TIME;
+    endVal = Math.round(restDuration.minutes * 60);
+  } else if (restDuration.distance_m > 0) {
+    endCond = GARMIN_END_DISTANCE;
+    endVal = Math.round(restDuration.distance_m);
+  } else {
+    endCond = GARMIN_END_LAP;
+    endVal = null;
+  }
+  return {
+    type: 'ExecutableStepDTO',
+    stepId: null,
+    stepOrder: ctx.order++,
+    childStepId: childGroupId,
+    description: 'Herstel',
+    stepType: GARMIN_STEP_TYPE.recovery,
+    endCondition: endCond,
+    endConditionValue: endVal,
+    preferredEndConditionUnit: null,
+    endConditionCompare: null,
+    targetType: GARMIN_NO_TARGET,
+    targetValueOne: null,
+    targetValueTwo: null,
+    targetValueUnit: null,
+    zoneNumber: null,
+    secondaryTargetType: null,
+    secondaryTargetValueOne: null,
+    secondaryTargetValueTwo: null,
     secondaryZoneNumber: null
   };
 }
