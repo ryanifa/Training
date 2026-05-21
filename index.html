@@ -2938,8 +2938,8 @@ function sessToWorkoutSteps(sess) {
 
     // Duur in minuten of afstand
     const durData = parseDur(durStr);
-    // Pace/HR/vermogen targets uit metric-string
-    const targets = parseMetric(metricStr);
+    // Pace/HR/vermogen/cadans targets uit metric + note
+    const targets = parseMetric(metricStr, item.note || '');
 
     steps.push({
       name: item.n,
@@ -2975,31 +2975,72 @@ function parseDur(s) {
   return { minutes, distance_m };
 }
 
-function parseMetric(m) {
-  if (!m) return {};
+function parseMetric(m, note) {
+  if (!m) m = '';
   const t = {};
+  const combined = m + ' ' + (note || '');
   // Pace: 4:35-4:45/km of 1:50-2:00/100m
   const paceMatch = m.match(/(\d+:\d+)[–-](\d+:\d+)\/(km|100m)/);
-  if (paceMatch) t.pace = paceMatch[1] + '-' + paceMatch[2] + '/' + paceMatch[3];
-  else {
+  if (paceMatch) {
+    t.pace = paceMatch[1] + '-' + paceMatch[2] + '/' + paceMatch[3];
+    const a = parsePaceSec(paceMatch[1]);
+    const b = parsePaceSec(paceMatch[2]);
+    const distM = paceMatch[3] === 'km' ? 1000 : 100;
+    const slow = Math.max(a, b), fast = Math.min(a, b);
+    t.paceRange = { lowMS: distM / slow, highMS: distM / fast };
+  } else {
     const singlePace = m.match(/(\d+:\d+)\/(km|100m)/);
     if (singlePace) t.pace = singlePace[1] + '/' + singlePace[2];
   }
-  // HR: 163-173 of HR 134-150
+  // HR: 163-173 of HR 134-150 of HR <120
   const hrMatch = m.match(/HR\s*(\d+)[–-](\d+)|(\d+)[–-](\d+)\s*bpm/);
   if (hrMatch) {
-    const a = hrMatch[1] || hrMatch[3];
-    const b = hrMatch[2] || hrMatch[4];
-    if (a && b) t.hr = a + '-' + b;
+    const a = parseInt(hrMatch[1] || hrMatch[3]);
+    const b = parseInt(hrMatch[2] || hrMatch[4]);
+    if (a && b) { t.hr = a + '-' + b; t.hrRange = { low: a, high: b }; }
+  } else {
+    const hrUpper = m.match(/HR\s*<\s*(\d+)/);
+    if (hrUpper) {
+      const u = parseInt(hrUpper[1]);
+      t.hr = '<' + u;
+      t.hrRange = { low: Math.max(1, Math.round(u * 0.7)), high: u };
+    }
   }
-  // Vermogen: 178-213W of 213W
+  // Vermogen: 178-213W of <130W
   const wMatch = m.match(/(\d+)[–-](\d+)\s*W/);
-  if (wMatch) t.watts = wMatch[1] + '-' + wMatch[2] + 'W';
+  if (wMatch) {
+    const a = parseInt(wMatch[1]), b = parseInt(wMatch[2]);
+    t.watts = a + '-' + b + 'W';
+    t.powerRange = { low: a, high: b };
+  } else {
+    const wUpper = m.match(/<\s*(\d+)\s*W/);
+    if (wUpper) {
+      const u = parseInt(wUpper[1]);
+      t.watts = '<' + u + 'W';
+      t.powerRange = { low: 1, high: u };
+    }
+  }
   // RPE
   const rpeMatch = m.match(/RPE\s*(\d+)[–-]?(\d+)?/);
   if (rpeMatch) t.rpe = rpeMatch[2] ? 'RPE ' + rpeMatch[1] + '-' + rpeMatch[2] : 'RPE ' + rpeMatch[1];
-
+  // Cadans (uit metric + note): "Cadans 90 rpm", "Cadans 90–93 rpm", "Cadans 90+ rpm"
+  const cadRange = combined.match(/[Cc]adans\s*(\d+)\s*[–-]\s*(\d+)\s*rpm/);
+  if (cadRange) {
+    t.cadence = { low: parseInt(cadRange[1]), high: parseInt(cadRange[2]) };
+  } else {
+    const cadSingle = combined.match(/[Cc]adans\s*(\d+)\s*(\+)?\s*rpm/);
+    if (cadSingle) {
+      const c = parseInt(cadSingle[1]);
+      const plus = !!cadSingle[2];
+      t.cadence = { low: c, high: plus ? Math.min(c + 15, 110) : c + 4 };
+    }
+  }
   return t;
+}
+
+function parsePaceSec(s) {
+  const p = s.split(':');
+  return parseInt(p[0]) * 60 + parseInt(p[1]);
 }
 
 function workoutStepsToText(sess, dayLabel, steps) {
@@ -3135,7 +3176,11 @@ const GARMIN_STEP_TYPE = {
   steady:   { stepTypeId: 7, stepTypeKey: 'other',    displayOrder: 7 }
 };
 
-const GARMIN_NO_TARGET = { workoutTargetTypeId: 1, workoutTargetTypeKey: 'no.target', displayOrder: 1 };
+const GARMIN_NO_TARGET     = { workoutTargetTypeId: 1, workoutTargetTypeKey: 'no.target',       displayOrder: 1 };
+const GARMIN_TARGET_POWER  = { workoutTargetTypeId: 2, workoutTargetTypeKey: 'power.zone',      displayOrder: 2 };
+const GARMIN_TARGET_CAD    = { workoutTargetTypeId: 3, workoutTargetTypeKey: 'cadence.zone',    displayOrder: 3 };
+const GARMIN_TARGET_HR     = { workoutTargetTypeId: 4, workoutTargetTypeKey: 'heart.rate.zone', displayOrder: 4 };
+const GARMIN_TARGET_PACE   = { workoutTargetTypeId: 6, workoutTargetTypeKey: 'pace.zone',       displayOrder: 6 };
 
 const GARMIN_END_TIME     = { conditionTypeId: 2, conditionTypeKey: 'time',                 displayOrder: 2, displayable: true  };
 const GARMIN_END_DISTANCE = { conditionTypeId: 3, conditionTypeKey: 'distance',             displayOrder: 3, displayable: true  };
@@ -3146,7 +3191,7 @@ function buildGarminWorkoutPayload(workout) {
   const sport = GARMIN_SPORT[workout.discipline] || GARMIN_SPORT.run;
   // Garmin Connect: workout-naam max ~30 tekens werkt prima
   const name = (workout.sess.label || 'Workout').substring(0, 30);
-  const ctx = { order: 1, group: 0 };
+  const ctx = { order: 1, group: 0, discipline: workout.discipline };
   const steps = [];
   for (const s of workout.steps) {
     const reps = Math.max(1, s.repeats || 1);
@@ -3212,6 +3257,7 @@ function buildGarminExecutable(s, ctx, childGroupId) {
     endVal = null;
   }
   const stepType = GARMIN_STEP_TYPE[s.kind] || GARMIN_STEP_TYPE.steady;
+  const { primary, secondary } = pickGarminTargets(s.targets || {}, ctx.discipline);
   return {
     type: 'ExecutableStepDTO',
     stepId: null,
@@ -3223,16 +3269,41 @@ function buildGarminExecutable(s, ctx, childGroupId) {
     endConditionValue: endVal,
     preferredEndConditionUnit: null,
     endConditionCompare: null,
-    targetType: GARMIN_NO_TARGET,
-    targetValueOne: null,
-    targetValueTwo: null,
+    targetType: primary.type,
+    targetValueOne: primary.low,
+    targetValueTwo: primary.high,
     targetValueUnit: null,
     zoneNumber: null,
-    secondaryTargetType: null,
-    secondaryTargetValueOne: null,
-    secondaryTargetValueTwo: null,
+    secondaryTargetType: secondary ? secondary.type : null,
+    secondaryTargetValueOne: secondary ? secondary.low : null,
+    secondaryTargetValueTwo: secondary ? secondary.high : null,
     secondaryZoneNumber: null
   };
+}
+
+// Kies primaire + (optioneel) secundaire Garmin target per sport
+// - bike:  primair vermogen (of HR als fallback), secundair cadans
+// - run:   primair pace (of HR als fallback)
+// - swim:  primair pace (per 100m → m/s), HR als fallback
+function pickGarminTargets(tg, discipline) {
+  let primary = { type: GARMIN_NO_TARGET, low: null, high: null };
+  let secondary = null;
+  if (discipline === 'bike') {
+    if (tg.powerRange) primary = { type: GARMIN_TARGET_POWER, low: tg.powerRange.low, high: tg.powerRange.high };
+    else if (tg.hrRange) primary = { type: GARMIN_TARGET_HR, low: tg.hrRange.low, high: tg.hrRange.high };
+    if (tg.cadence) secondary = { type: GARMIN_TARGET_CAD, low: tg.cadence.low, high: tg.cadence.high };
+  } else if (discipline === 'run' || discipline === 'swim') {
+    if (tg.paceRange) {
+      primary = {
+        type: GARMIN_TARGET_PACE,
+        low: Number(tg.paceRange.lowMS.toFixed(4)),
+        high: Number(tg.paceRange.highMS.toFixed(4))
+      };
+    } else if (tg.hrRange) {
+      primary = { type: GARMIN_TARGET_HR, low: tg.hrRange.low, high: tg.hrRange.high };
+    }
+  }
+  return { primary, secondary };
 }
 
 function buildGarminPushSnippet(payload) {
