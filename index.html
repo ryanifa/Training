@@ -1561,6 +1561,23 @@ let state = {
   chatMessages: []
 };
 
+// state.moves: { "weekId:fromDay:sessionId": <target> }  (verplaatste sessies)
+// <target> = nummer (zelfde week, dag-index)  |  "toWeekId:toDayIdx" (cross-week)
+function parseMoveTarget(value, srcWeekId) {
+  if (typeof value === 'number') return { weekId: srcWeekId, day: value };
+  if (typeof value === 'string' && value.indexOf(':') >= 0) {
+    const idx = value.indexOf(':');
+    const day = parseInt(value.slice(idx + 1));
+    if (isNaN(day)) return null;
+    return { weekId: value.slice(0, idx), day: day };
+  }
+  return null;
+}
+function buildMoveValue(srcWeekId, target) {
+  if (target.weekId === srcWeekId) return target.day;
+  return target.weekId + ':' + target.day;
+}
+
 // Bouw runtime week-data uit het verse plan + user overrides
 function getWeekView(weekId) {
   const original = WEEKS[weekId];
@@ -1581,33 +1598,37 @@ function getWeekView(weekId) {
     });
   }
 
-  // Pas verplaatsingen toe
+  // Pas verplaatsingen toe — inclusief cross-week
   Object.keys(state.moves).forEach(key => {
     const parts = key.split(':');
-    if (parts[0] !== weekId) return;
-    const sid = parts.slice(2).join(':');
+    const srcWeek = parts[0];
     const fromPart = parts[1];
-    const toDay = state.moves[key];
-    if (isNaN(toDay)) return;
-    if (!w.days[toDay]) return;
+    const sid = parts.slice(2).join(':');
+    const target = parseMoveTarget(state.moves[key], srcWeek);
+    if (!target) return;
 
     if (fromPart === '__import') {
-      // Synthetische import-move: voeg toe aan toDay als hij er nog niet staat
-      // sid bevat dan eigenlijk "type:datum" — maar we hebben de echte sid in parts[2]
-      const realSid = parts[2];
-      // parts is bv ['w4','__import','run_threshold','2026-05-04']
-      if (!w.days[toDay].sessions.includes(realSid)) {
-        w.days[toDay].sessions.push(realSid);
+      // Synthetische import-move: voeg toe aan target als hij er nog niet staat
+      if (target.weekId === weekId && w.days[target.day]) {
+        const realSid = parts[2];
+        if (!w.days[target.day].sessions.includes(realSid)) {
+          w.days[target.day].sessions.push(realSid);
+        }
       }
-    } else {
-      const fromDay = parseInt(fromPart);
-      if (isNaN(fromDay)) return;
-      if (!w.days[fromDay]) return;
-      // Verwijder uit fromDay als hij er nog staat
+      return;
+    }
+
+    const fromDay = parseInt(fromPart);
+
+    // Verwijder uit bron-week's bron-dag (als deze week de bron is)
+    if (srcWeek === weekId && !isNaN(fromDay) && w.days[fromDay]) {
       w.days[fromDay].sessions = w.days[fromDay].sessions.filter(s => s !== sid);
-      // Voeg toe aan toDay als hij er nog niet staat
-      if (!w.days[toDay].sessions.includes(sid)) {
-        w.days[toDay].sessions.push(sid);
+    }
+
+    // Voeg toe aan doel-week's doel-dag (als deze week de bestemming is)
+    if (target.weekId === weekId && w.days[target.day]) {
+      if (!w.days[target.day].sessions.includes(sid)) {
+        w.days[target.day].sessions.push(sid);
       }
     }
   });
@@ -2528,7 +2549,13 @@ async function resetWeek() {
 }
 
 async function cleanWeek() {
-  const movesToDelete = Object.keys(state.moves).filter(key => key.startsWith(activeWeek + ':'));
+  // Verwijder zowel moves WAARUIT (bron = deze week) als WAARIN (doel = deze week)
+  const movesToDelete = Object.keys(state.moves).filter(key => {
+    if (key.startsWith(activeWeek + ':')) return true;
+    const parts = key.split(':');
+    const tgt = parseMoveTarget(state.moves[key], parts[0]);
+    return !!(tgt && tgt.weekId === activeWeek);
+  });
   const skipsToDelete = Object.keys(state.skips || {}).filter(key => key.startsWith(activeWeek + ':'));
 
   const planSessIds = new Set();
@@ -2626,7 +2653,7 @@ function renderWeek(key) {
   if (moveMode) {
     const sess = SESSIONS[moveMode.sid];
     moveHintHtml = `<div class="move-hint">
-      <span>📌 Tik op een dag om <strong>${sess ? sess.label : moveMode.sid}</strong> te verplaatsen</span>
+      <span>📌 Tik op een dag om <strong>${sess ? sess.label : moveMode.sid}</strong> te verplaatsen <span style="opacity:0.7">(← → voor andere week)</span></span>
       <button class="move-cancel" onclick="cancelMove()">Annuleer</button>
     </div>`;
   }
@@ -2641,7 +2668,7 @@ function renderWeek(key) {
       const isDone = day.done.includes(sid);
       const isMissed = state.missed[sessKey] === true;
       const isDayRestForPill = state.rest[activeWeek + ':' + di] === true;
-      const isMoving = moveMode && moveMode.sid === sid && moveMode.fromDay === di;
+      const isMoving = moveMode && moveMode.sid === sid && moveMode.fromDay === di && (moveMode.fromWeek || activeWeek) === activeWeek;
       const hasFb = !!(state.feedback[sessKey] && state.feedback[sessKey].text);
       const displayDur = getDisplayDur(activeWeek, di, sid);
       const stateClass = isDone ? ' done' : (isMissed ? ' missed' : (isDayRestForPill ? ' day-rest' : ''));
@@ -2659,7 +2686,7 @@ function renderWeek(key) {
       </div>`;
     }).join('');
 
-    const isMoveTarget = moveMode && moveMode.fromDay !== di;
+    const isMoveTarget = moveMode && (moveMode.fromWeek !== activeWeek || moveMode.fromDay !== di);
     const isDayRest = state.rest[activeWeek + ':' + di] === true;
     const restBtn = `<button class="day-rest-btn${isDayRest ? ' active' : ''}" onclick="event.stopPropagation(); toggleDayRest(${di})" title="${isDayRest ? 'Rustdag aan — klik om uit te zetten' : 'Markeer als bewuste rustdag'}">🛏</button>`;
     const emptyLabel = isDayRest ? '🛏 Bewuste rust' : 'Rust';
@@ -2878,7 +2905,7 @@ function escapeHtml(s) {
 }
 
 function startMove(sid, di) {
-  moveMode = { sid: sid, fromDay: di };
+  moveMode = { sid: sid, fromDay: di, fromWeek: activeWeek };
   closeDetail();
   // Spring naar weekoverzicht zodat de gebruiker een doel-dag kan tikken
   const weekBtn = document.querySelector('.nav-btn[onclick*="\'week\'"]');
@@ -2897,11 +2924,13 @@ async function completeMove(toDay) {
   if (!moveMode) return;
   const sid = moveMode.sid;
   const fromDay = moveMode.fromDay;
-  if (toDay === fromDay) { moveMode = null; renderWeek(activeWeek); return; }
+  const fromWeek = moveMode.fromWeek || activeWeek;
+  const toWeek = activeWeek;
+  if (fromWeek === toWeek && toDay === fromDay) { moveMode = null; renderWeek(activeWeek); return; }
 
-  applyMove(sid, fromDay, toDay);
+  applyMove(sid, fromWeek, fromDay, toWeek, toDay);
   moveMode = null;
-  selectedSess = { sid: sid, di: toDay };
+  selectedSess = (fromWeek === toWeek) ? { sid: sid, di: toDay } : null;
   await saveState();
   renderWeek(activeWeek);
 }
@@ -4034,7 +4063,7 @@ async function onDrop(e, toDay) {
     dragSessId = null; dragFromDay = null; return;
   }
 
-  applyMove(dragSessId, dragFromDay, toDay);
+  applyMove(dragSessId, activeWeek, dragFromDay, activeWeek, toDay);
   selectedSess = { sid: dragSessId, di: toDay };
   dragSessId = null; dragFromDay = null;
   await saveState();
@@ -4052,37 +4081,51 @@ function getOriginalDay(weekId, sid) {
 }
 
 // Verplaats sid van fromDay naar toDay; werkt state.moves bij
-function applyMove(sid, fromDay, toDay) {
-  const origDay = getOriginalDay(activeWeek, sid);
-  // Done-key updaten naar nieuwe dag
-  const oldDoneKey = activeWeek + ':' + fromDay + ':' + sid;
-  const newDoneKey = activeWeek + ':' + toDay + ':' + sid;
-  if (state.done[oldDoneKey]) {
-    delete state.done[oldDoneKey];
-    state.done[newDoneKey] = true;
+// Verplaats sid van (fromWeek, fromDay) naar (toWeek, toDay)
+function applyMove(sid, fromWeek, fromDay, toWeek, toDay) {
+  // Done/missed/feedback/metrics keys per (week, day, sid) bijwerken
+  const oldKey = fromWeek + ':' + fromDay + ':' + sid;
+  const newKey = toWeek + ':' + toDay + ':' + sid;
+  if (oldKey !== newKey) {
+    if (state.done[oldKey]) { delete state.done[oldKey]; state.done[newKey] = true; }
+    if (state.missed[oldKey]) { delete state.missed[oldKey]; state.missed[newKey] = true; }
+    if (state.feedback[oldKey]) { state.feedback[newKey] = state.feedback[oldKey]; delete state.feedback[oldKey]; }
+    if (state.metrics && state.metrics[oldKey]) { state.metrics[newKey] = state.metrics[oldKey]; delete state.metrics[oldKey]; }
   }
-  // Missed-key updaten naar nieuwe dag
-  if (state.missed[oldDoneKey]) {
-    delete state.missed[oldDoneKey];
-    state.missed[newDoneKey] = true;
+
+  // Zoek bestaande move-entry waarvan het doel (fromWeek, fromDay) is —
+  // dan was de sessie al eerder verplaatst en moeten we die entry bijwerken
+  // i.p.v. een nieuwe entry te maken.
+  let existingKey = null;
+  let existingSrcWeek = null;
+  let existingSrcDay = null;
+  for (const k of Object.keys(state.moves)) {
+    const parts = k.split(':');
+    if (parts[1] === '__import') continue;
+    if (parts.slice(2).join(':') !== sid) continue;
+    const tgt = parseMoveTarget(state.moves[k], parts[0]);
+    if (tgt && tgt.weekId === fromWeek && tgt.day === fromDay) {
+      existingKey = k;
+      existingSrcWeek = parts[0];
+      existingSrcDay = parseInt(parts[1]);
+      break;
+    }
   }
-  // Feedback-key updaten naar nieuwe dag
-  const oldFbKey = activeWeek + ':' + fromDay + ':' + sid;
-  const newFbKey = activeWeek + ':' + toDay + ':' + sid;
-  if (state.feedback[oldFbKey]) {
-    state.feedback[newFbKey] = state.feedback[oldFbKey];
-    delete state.feedback[oldFbKey];
-  }
-  // Move-key altijd op origDay, niet fromDay
-  const moveKey = activeWeek + ':' + (origDay >= 0 ? origDay : fromDay) + ':' + sid;
-  if (origDay === toDay) {
-    // Terug naar oorspronkelijke dag = move ongedaan maken
-    delete state.moves[moveKey];
-  } else if (origDay >= 0) {
-    state.moves[moveKey] = toDay;
+
+  if (existingKey) {
+    // Sessie was al verplaatst — werk dezelfde entry bij of verwijder hem
+    if (existingSrcWeek === toWeek && existingSrcDay === toDay) {
+      // Terug naar oorspronkelijke plek = move ongedaan maken
+      delete state.moves[existingKey];
+    } else {
+      state.moves[existingKey] = buildMoveValue(existingSrcWeek, { weekId: toWeek, day: toDay });
+    }
   } else {
-    // Sessie zat niet in plan → toch opslaan vanaf fromDay
-    state.moves[activeWeek + ':' + fromDay + ':' + sid] = toDay;
+    // Eerste move voor deze sessie — gebruik plan-dag als bron-dag wanneer mogelijk
+    const origDay = getOriginalDay(fromWeek, sid);
+    const srcDay = origDay >= 0 ? origDay : fromDay;
+    if (fromWeek === toWeek && srcDay === toDay) return; // no-op
+    state.moves[fromWeek + ':' + srcDay + ':' + sid] = buildMoveValue(fromWeek, { weekId: toWeek, day: toDay });
   }
 }
 
