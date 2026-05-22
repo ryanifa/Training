@@ -152,6 +152,15 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 
 /* Detail panel */
 .detail-panel { background: white; border-radius: 8px; padding: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 0; border: 1px solid #ddd; }
+.today-header { background: white; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.today-date { font-size: 18px; font-weight: bold; color: #1a1a2e; }
+.today-rest-toggle { padding: 8px 14px; border-radius: 8px; border: 1px solid #4fc3f7; background: white; color: #185FA5; font-size: 13px; cursor: pointer; font-weight: bold; }
+.today-rest-toggle.active { background: #E3F2FD; }
+.today-card { background: white; border-radius: 8px; padding: 14px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #eee; }
+.today-card.is-done { border-left: 4px solid #2e7d32; background: #f5fdf6; }
+.today-card.is-missed { border-left: 4px solid #d32f2f; background: #fef7f6; }
+.today-card.is-rest { border-left: 4px solid #4fc3f7; background: #F5FAFE; }
+.today-empty { background: white; border-radius: 8px; padding: 20px; text-align: center; color: #666; font-size: 14px; border: 1px dashed #ccc; }
 .detail-backdrop { display: none; }
 .detail-close { display: none; }
 .detail-title { font-size: 16px; font-weight: bold; margin-bottom: 4px; }
@@ -380,9 +389,10 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 </div>
 
 <div class="nav" id="mainNav">
-  <button class="nav-toggle" onclick="toggleNav()" aria-label="Menu"><span>☰ Menu</span><span class="nav-toggle-current" id="navToggleCurrent">📅 Week</span></button>
+  <button class="nav-toggle" onclick="toggleNav()" aria-label="Menu"><span>☰ Menu</span><span class="nav-toggle-current" id="navToggleCurrent">📍 Vandaag</span></button>
   <div class="nav-items">
-    <button class="nav-btn active" onclick="showPage('week', this)"><span class="nav-full">Weekplan</span><span class="nav-short">📅 Week</span></button>
+    <button class="nav-btn active" onclick="showPage('vandaag', this)"><span class="nav-full">Vandaag</span><span class="nav-short">📍 Vandaag</span></button>
+    <button class="nav-btn" onclick="showPage('week', this)"><span class="nav-full">Weekplan</span><span class="nav-short">📅 Week</span></button>
     <button class="nav-btn" onclick="showPage('seizoen', this)"><span class="nav-full">Seizoen</span><span class="nav-short">📊 Seizoen</span></button>
     <button class="nav-btn" onclick="showPage('kracht', this)"><span class="nav-full">Kracht</span><span class="nav-short">💪 Kracht</span></button>
     <button class="nav-btn" onclick="showPage('coach', this)"><span class="nav-full">Coach</span><span class="nav-short">💬 Coach</span></button>
@@ -394,8 +404,13 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 
 <div class="content">
 
+<!-- VANDAAG -->
+<div id="vandaag" class="page active">
+  <div id="todayContent"></div>
+</div>
+
 <!-- WEEKPLAN -->
-<div id="week" class="page active">
+<div id="week" class="page">
   <div class="week-nav">
     <button class="week-nav-btn" id="prevWeekBtn" onclick="navWeek(-1)">← Vorige week</button>
     <button class="week-nav-btn" onclick="goToCurrentWeek()">📍 Huidige week</button>
@@ -1985,6 +2000,7 @@ function showPage(id, btn) {
   }
   const nav = document.getElementById('mainNav');
   if (nav) nav.classList.remove('open');
+  if(id === 'vandaag') renderToday();
   if(id === 'week') renderWeek(activeWeek);
   if(id === 'status') renderStatus();
   if(id === 'seizoen') renderSeason();
@@ -2482,6 +2498,12 @@ function goToCurrentWeek() {
   renderWeek(getCurrentWeekId());
 }
 
+// 0 = maandag ... 6 = zondag (matcht WEEKS day index)
+function getCurrentDayIndex() {
+  const js = new Date().getDay();
+  return js === 0 ? 6 : js - 1;
+}
+
 function navWeek(dir) {
   const keys = WEEK_META.map(m => m.id);
   const i = keys.indexOf(activeWeek);
@@ -2663,6 +2685,9 @@ function renderWeek(key) {
       closeDetail();
     }
   }
+
+  // Houd Vandaag-pagina synchroon na elke state-wijziging
+  try { renderToday(); } catch(e) {}
 }
 
 function selectSess(sid, di) {
@@ -2734,12 +2759,24 @@ function showDetail(sid, di) {
   const sess = SESSIONS[sid];
   if(!sess) return;
   const w = getWeekView(activeWeek);
-  const day = w.days[di];
-  if(!day) return;
-  const isDone = day.done.includes(sid);
-  const isMissed = state.missed[activeWeek + ':' + di + ':' + sid] === true;
-  const panel = document.getElementById('detailPanel');
+  if(!w || !w.days[di]) return;
   setDetailVisible(true);
+  document.getElementById('detailPanel').innerHTML =
+    '<button class="detail-close" onclick="closeDetail()" aria-label="Sluiten">×</button>' +
+    buildSessionDetailHTML(activeWeek, di, sid);
+}
+
+// Bouwt de gedeelde HTML voor een sessie (titel, sub, metrics, feedback,
+// steps en actie-knoppen). Gebruikt door de detail-overlay én de
+// Vandaag-pagina, zodat het uiterlijk en de acties identiek zijn.
+function buildSessionDetailHTML(weekId, di, sid) {
+  const sess = SESSIONS[sid];
+  if (!sess) return '';
+  const w = getWeekView(weekId);
+  const day = w && w.days[di];
+  if (!day) return '';
+  const isDone = day.done.includes(sid);
+  const isMissed = state.missed[weekId + ':' + di + ':' + sid] === true;
 
   const stepsHtml = sess.steps.map(group => {
     const itemsHtml = group.items.map(item => `
@@ -2751,19 +2788,18 @@ function showDetail(sid, di) {
     return (group.sess ? `<div class="sess-lbl">${group.sess}</div>` : '') + itemsHtml;
   }).join('<div class="divider-line"></div>');
 
-  const fbKey = activeWeek + ':' + di + ':' + sid;
+  const fbKey = weekId + ':' + di + ':' + sid;
   const fbEntry = state.feedback[fbKey];
   const hasFb = !!(fbEntry && fbEntry.text);
   const metricsHtml = renderMetrics(state.metrics[fbKey]);
-  const displayDur = getDisplayDur(activeWeek, di, sid);
+  const displayDur = getDisplayDur(weekId, di, sid);
   const fbHtml = hasFb ? `
     <div class="feedback-display">
       <div class="feedback-display-label">📝 Feedback${fbEntry.updatedAt ? ' · ' + new Date(fbEntry.updatedAt).toLocaleDateString('nl-NL') : ''}</div>
       ${escapeHtml(fbEntry.text)}
     </div>` : '';
 
-  panel.innerHTML = `
-    <button class="detail-close" onclick="closeDetail()" aria-label="Sluiten">×</button>
+  return `
     <div class="detail-title">${sess.title}</div>
     <div class="detail-sub">${day.name} ${day.date} · ${displayDur}${displayDur !== sess.dur ? ' <span style="color:#7F77DD;font-size:11px">(werkelijk · plan: ' + sess.dur + ')</span>' : ''}</div>
     ${metricsHtml}
@@ -2784,6 +2820,53 @@ function showDetail(sid, di) {
     <button class="mark-done-btn" onclick="openWorkout('${sid}',${di})" style="background:#FAEEDA;border-color:#EF9F27;color:#854F0B">
       🏃 Garmin workout
     </button>`;
+}
+
+function renderToday() {
+  const container = document.getElementById('todayContent');
+  if (!container) return;
+  const weekId = getCurrentWeekId();
+  activeWeek = weekId;
+  const di = getCurrentDayIndex();
+  const w = getWeekView(weekId);
+  if (!w || !w.days[di]) {
+    container.innerHTML = '<div class="today-empty">Geen weekdata voor vandaag</div>';
+    return;
+  }
+  const day = w.days[di];
+  const isRest = state.rest[weekId + ':' + di] === true;
+  const todayStr = new Date().toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  let html = `
+    <div class="today-header">
+      <div class="today-date">${todayStr.charAt(0).toUpperCase() + todayStr.slice(1)}</div>
+      <button class="today-rest-toggle ${isRest ? 'active' : ''}" onclick="toggleTodayRest()">
+        ${isRest ? '↩ Geen rustdag' : '🛏 Markeer als rustdag'}
+      </button>
+    </div>
+  `;
+
+  if (!day.sessions || day.sessions.length === 0) {
+    html += `<div class="today-empty">${isRest ? '🛏 Bewuste rustdag' : 'Geen training gepland — rust'}</div>`;
+  } else {
+    day.sessions.forEach(sid => {
+      const sess = SESSIONS[sid];
+      if (!sess) return;
+      const isDone = day.done.includes(sid);
+      const isMissed = state.missed[weekId + ':' + di + ':' + sid] === true;
+      const cls = isDone ? ' is-done' : (isMissed ? ' is-missed' : (isRest ? ' is-rest' : ''));
+      html += `<div class="today-card${cls}">${buildSessionDetailHTML(weekId, di, sid)}</div>`;
+    });
+  }
+
+  container.innerHTML = html;
+}
+
+async function toggleTodayRest() {
+  const di = getCurrentDayIndex();
+  activeWeek = getCurrentWeekId();
+  await toggleDayRest(di);
+  renderToday();
 }
 
 function escapeHtml(s) {
@@ -4073,6 +4156,7 @@ function init() {
     console.warn('renderWeek current failed, fallback w2:', e);
     try { renderWeek('w2'); } catch(e2) { console.error('renderWeek fallback ook mislukt:', e2); }
   }
+  try { renderToday(); } catch(e) { console.warn('renderToday:', e); }
   try { renderStatus(); } catch(e) { console.warn('renderStatus:', e); }
   try { renderSeason(); } catch(e) { console.warn('renderSeason:', e); }
   try { updateNextRaceSub(); } catch(e) { console.warn('updateNextRaceSub:', e); }
