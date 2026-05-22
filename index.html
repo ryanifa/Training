@@ -2880,9 +2880,12 @@ function escapeHtml(s) {
 function startMove(sid, di) {
   moveMode = { sid: sid, fromDay: di };
   closeDetail();
-  renderWeek(activeWeek);
+  // Spring naar weekoverzicht zodat de gebruiker een doel-dag kan tikken
+  const weekBtn = document.querySelector('.nav-btn[onclick*="\'week\'"]');
+  if (weekBtn) showPage('week', weekBtn); else renderWeek(activeWeek);
   // Scroll naar boven zodat de hint zichtbaar is
-  window.scrollTo({ top: document.getElementById('weekGrid').offsetTop - 100, behavior: 'smooth' });
+  const grid = document.getElementById('weekGrid');
+  if (grid) window.scrollTo({ top: grid.offsetTop - 100, behavior: 'smooth' });
 }
 
 function cancelMove() {
@@ -4182,8 +4185,33 @@ function init() {
         if (ok) { try { renderWeek(activeWeek); renderStatus(); } catch(e) {} }
       });
     }
+    if (!document.hidden) checkDayRollover();
   });
   window.addEventListener('pagehide', function() { flushCloudPush(); });
+
+  // 4. Detecteer dag-wissel (middernacht) zodat Vandaag automatisch
+  //    de volgende dag toont als de app open blijft staan
+  startDayRolloverWatcher();
+}
+
+let _lastDayIndex = null;
+let _lastWeekId = null;
+function checkDayRollover() {
+  const di = getCurrentDayIndex();
+  const wk = getCurrentWeekId();
+  if (_lastDayIndex === null) { _lastDayIndex = di; _lastWeekId = wk; return; }
+  if (di !== _lastDayIndex || wk !== _lastWeekId) {
+    _lastDayIndex = di;
+    _lastWeekId = wk;
+    try { renderToday(); } catch(e) {}
+    try { renderWeek(wk); } catch(e) {}
+    try { updateNextRaceSub(); } catch(e) {}
+  }
+}
+function startDayRolloverWatcher() {
+  _lastDayIndex = getCurrentDayIndex();
+  _lastWeekId = getCurrentWeekId();
+  setInterval(checkDayRollover, 60 * 1000);
 }
 
 if (document.readyState === 'loading') {
