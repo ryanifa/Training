@@ -2391,8 +2391,12 @@ async function saveWeekEditor() {
     const blob = serializePlan(plan, 'user-edited', planContentHash(DEFAULT_PLAN));
     await gistUpdateFile(cfg.gistId, cfg.token, PLAN_FILE, blob);
     applyPlan(blob);
-    rerenderAfterPlan();
+    const editedWeek = weekEditorWeek;
     setWeekEditorMsg('✅ Opgeslagen naar Gist (v' + plan.version + ').', 'ok');
+    setTimeout(function() {
+      closeWeekEditor();
+      try { renderWeek(editedWeek); renderToday(); renderSeason(); renderStatus(); } catch(e) {}
+    }, 700);
   } catch(e) {
     setWeekEditorMsg('❌ Opslaan mislukt: ' + (e.message || e), 'err');
   }
