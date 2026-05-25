@@ -1660,6 +1660,7 @@ function getWeekView(weekId) {
 // STATE STORAGE — layered: localStorage (primary) + optional GitHub Gist sync
 // ============================================================
 const SYNC_FILE = 'trainingState.json';
+const PLAN_FILE = 'trainingPlan.json';
 const LS_KEY = 'trainingState';
 const SYNC_CFG_KEY = 'syncConfig';
 let cloudPushTimer = null;
@@ -1815,6 +1816,91 @@ async function gistCreate(token, blob) {
   if (!r.ok) throw new Error('Gist aanmaken mislukt (HTTP ' + r.status + ')');
   const data = await r.json();
   return data.id;
+}
+
+// ---- Generieke gist-bestandstoegang (meerdere files in één gist) ----
+async function gistFetchFiles(gistId, token) {
+  const r = await fetch('https://api.github.com/gists/' + gistId, {
+    headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json' }
+  });
+  if (!r.ok) throw new Error('Gist ophalen mislukt (HTTP ' + r.status + ')');
+  const data = await r.json();
+  return data.files || {};
+}
+async function gistUpdateFile(gistId, token, filename, contentObj) {
+  const r = await fetch('https://api.github.com/gists/' + gistId, {
+    method: 'PATCH',
+    headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ files: { [filename]: { content: JSON.stringify(contentObj) } } })
+  });
+  if (!r.ok) throw new Error('Gist-bestand updaten mislukt (HTTP ' + r.status + ')');
+}
+
+// ---- Plan-sync (trainingPlan.json) ----
+function hashStr(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+function planContentHash(plan) {
+  return hashStr(JSON.stringify({ meta: plan.meta, sessions: plan.sessions, weekPlans: plan.weekPlans }));
+}
+function serializePlan(plan, source, defaultHash) {
+  return {
+    _meta: { updatedAt: new Date().toISOString(), source: source, defaultHash: defaultHash },
+    version: plan.version || 1,
+    meta: plan.meta,
+    sessions: plan.sessions,
+    weekPlans: plan.weekPlans
+  };
+}
+function isValidPlan(p) {
+  return !!(p && p.sessions && typeof p.sessions === 'object'
+    && Array.isArray(p.meta) && p.weekPlans && typeof p.weekPlans === 'object');
+}
+
+// Laadt het plan uit de Gist (apart bestand). Retourneert true als er een
+// ander plan dan DEFAULT_PLAN actief is gezet (caller moet dan opnieuw renderen).
+//   - geen sync geconfigureerd     → DEFAULT_PLAN blijft (false)
+//   - plan-bestand ontbreekt       → seed met DEFAULT_PLAN (false)
+//   - bron 'user-edited'           → gebruik gist-plan (true)
+//   - bron 'default-seed', zelfde hash → DEFAULT_PLAN blijft (false)
+//   - bron 'default-seed', code gewijzigd → her-seed + DEFAULT_PLAN (false)
+async function loadPlanFromCloud() {
+  const cfg = getSyncConfig();
+  if (!cfg || !cfg.token || !cfg.gistId) return false;
+  const defaultHash = planContentHash(DEFAULT_PLAN);
+  try {
+    const files = await gistFetchFiles(cfg.gistId, cfg.token);
+    const planFile = files && files[PLAN_FILE];
+    if (!planFile || typeof planFile.content !== 'string') {
+      await gistUpdateFile(cfg.gistId, cfg.token, PLAN_FILE, serializePlan(DEFAULT_PLAN, 'default-seed', defaultHash));
+      console.info('[plan] Gist geseed met DEFAULT_PLAN');
+      return false;
+    }
+    let gistPlan;
+    try { gistPlan = JSON.parse(planFile.content); } catch(_) { return false; }
+    if (!isValidPlan(gistPlan)) {
+      await gistUpdateFile(cfg.gistId, cfg.token, PLAN_FILE, serializePlan(DEFAULT_PLAN, 'default-seed', defaultHash));
+      return false;
+    }
+    const meta = gistPlan._meta || {};
+    if (meta.source === 'user-edited') {
+      applyPlan(gistPlan);
+      console.info('[plan] In-app bewerkt plan uit Gist geladen (v' + (gistPlan.version || '?') + ')');
+      return true;
+    }
+    // default-seed
+    if (meta.defaultHash === defaultHash) {
+      return false; // identiek aan code-default
+    }
+    await gistUpdateFile(cfg.gistId, cfg.token, PLAN_FILE, serializePlan(DEFAULT_PLAN, 'default-seed', defaultHash));
+    console.info('[plan] Code-default gewijzigd → Gist her-geseed');
+    return false;
+  } catch(e) {
+    console.warn('loadPlanFromCloud:', e);
+    return false;
+  }
 }
 
 async function pushToCloud() {
@@ -4284,11 +4370,15 @@ function init() {
   try { updateNextRaceSub(); } catch(e) { console.warn('updateNextRaceSub:', e); }
   updateSyncBadge();
 
-  // 2. Probeer op de achtergrond state te laden
+  // 2. Op de achtergrond: eerst het plan uit de Gist (kan DEFAULT_PLAN
+  //    vervangen), dan de state, en tot slot opnieuw renderen.
   setTimeout(function() {
-    loadState().then(function() {
-      try { renderWeek(activeWeek); renderStatus(); renderSeason(); } catch(e) { console.warn('post-load render:', e); }
-    }).catch(function(e) { console.warn('loadState bg:', e); });
+    loadPlanFromCloud()
+      .then(function() { return loadState(); })
+      .then(function() {
+        try { renderWeek(activeWeek); renderToday(); renderStatus(); renderSeason(); } catch(e) { console.warn('post-load render:', e); }
+      })
+      .catch(function(e) { console.warn('bg load:', e); });
   }, 100);
 
   // 3. Bij terugkeren naar de tab: opnieuw uit de cloud halen
