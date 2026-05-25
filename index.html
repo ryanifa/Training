@@ -783,7 +783,10 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 // SESSIONS LIBRARY
 // Sessies hergebruiken, per week varieer ik duur/intensiteit via modifiers
 // ============================================================
-const SESSIONS = {
+// (DEFAULT_* = hardcoded standaard/fallback; wordt in een DEFAULT_PLAN
+//  geconsolideerd en via applyPlan in de runtime SESSIONS/WEEK_META/WEEKS
+//  gezet. Stap 3 kan applyPlan later met een plan uit Gist aanroepen.)
+const DEFAULT_SESSIONS = {
   // ZWEMMEN
   swim_tech: {
     type:'swim', label:'Zwem techniek', dur:'±50 min',
@@ -1374,7 +1377,7 @@ function placeEvent(plan, dayIndex, eventId, keepRest=false) {
 // ============================================================
 // ALLE WEKEN
 // ============================================================
-const WEEK_META = [
+const DEFAULT_WEEK_META = [
   { id:'w1',  start:'2026-04-13', label:'W1 · 13–19 apr' },
   { id:'w2',  start:'2026-04-20', label:'W2 · 20–26 apr' },
   { id:'w3',  start:'2026-04-27', label:'W3 · 27 apr–3 mei' },
@@ -1407,7 +1410,7 @@ const WEEK_META = [
 ];
 
 // Bouw de plannen per week
-const WEEK_PLANS = {
+const DEFAULT_WEEK_PLANS = {
   // W1 — basis
   w1: P.f1_base,
 
@@ -1534,11 +1537,43 @@ const WEEK_PLANS = {
   w29: P.taper_mar,
 };
 
-// Bouw WEEKS object
-const WEEKS = {};
-WEEK_META.forEach(meta => {
-  WEEKS[meta.id] = buildWeek(meta, WEEK_PLANS[meta.id]);
-});
+// ============================================================
+// PLAN — één geconsolideerde, pure-data structuur (JSON-serialiseerbaar).
+// De DEFAULT_WEEK_PLANS-IIFE's zijn op dit punt al uitgerekend tot platte
+// arrays, dus we kopiëren ze alleen nog diep. Geen functies meer in PLAN.
+// Stap 3 kan straks applyPlan(planUitGist) aanroepen i.p.v. DEFAULT_PLAN.
+// ============================================================
+const DEFAULT_PLAN = {
+  version: 1,
+  meta: DEFAULT_WEEK_META.map(m => Object.assign({}, m)),
+  sessions: DEFAULT_SESSIONS,
+  weekPlans: (function() {
+    const wp = {};
+    DEFAULT_WEEK_META.forEach(m => {
+      const plan = DEFAULT_WEEK_PLANS[m.id] || [];
+      wp[m.id] = plan.map(day => day.slice());
+    });
+    return wp;
+  })()
+};
+
+// Runtime-accessors — afgeleid van het actieve plan via applyPlan.
+let SESSIONS = {};
+let WEEK_META = [];
+let WEEKS = {};
+let activePlan = null;
+
+function applyPlan(plan) {
+  activePlan = plan;
+  SESSIONS = plan.sessions || {};
+  WEEK_META = plan.meta || [];
+  WEEKS = {};
+  WEEK_META.forEach(meta => {
+    WEEKS[meta.id] = buildWeek(meta, (plan.weekPlans && plan.weekPlans[meta.id]) || []);
+  });
+}
+
+applyPlan(DEFAULT_PLAN);
 
 // ============================================================
 // STATE — plan is read-only, user-acties apart opgeslagen
