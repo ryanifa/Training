@@ -740,9 +740,34 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
       <button class="modal-btn" onclick="forcePullUI()" title="Cloud → lokaal (overschrijf)">⬇ Forceer ophalen</button>
       <button class="modal-btn" onclick="forcePushUI()" title="Lokaal → cloud (overschrijf)">⬆ Forceer uploaden</button>
       <div style="flex:1"></div>
+      <button class="modal-btn" onclick="openPlanEditor()" title="Plan (sessies + weekschema) bewerken">📝 Plan bewerken</button>
       <button class="modal-btn" onclick="planSyncUI()" title="Plan (sessies + weken) naar Gist">📋 Plan-sync</button>
       <button class="modal-btn" onclick="syncNowManual()">🔄 Sync nu</button>
       <button class="modal-btn modal-btn-primary" onclick="connectSync()">Verbinden</button>
+    </div>
+  </div>
+</div>
+
+<!-- PLAN EDITOR MODAL -->
+<div class="modal-overlay" id="planEditorModal" onclick="onPlanEditorBgClick(event)">
+  <div class="modal-box" style="max-width:680px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">📝 Plan bewerken (JSON)</div>
+        <div class="modal-sub">Sessiebibliotheek + weekschema. Opslaan schrijft naar de Gist en geldt op al je apparaten.</div>
+      </div>
+      <button class="modal-close" onclick="closePlanEditor()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-meta" style="margin-bottom:6px">Structuur: <code>{ version, meta[], sessions{}, weekPlans{} }</code>. Bewerk voorzichtig — ongeldige JSON wordt geweigerd.</div>
+      <textarea id="planEditorText" spellcheck="false" style="width:100%;min-height:340px;font-family:monospace;font-size:11px;border:1px solid #ddd;border-radius:6px;padding:8px;background:#1a1a1a;color:#d4d4d4;resize:vertical"></textarea>
+      <div class="modal-meta" id="planEditorMsg" style="margin-top:8px;min-height:16px"></div>
+    </div>
+    <div class="modal-footer" style="flex-wrap:wrap;gap:6px">
+      <button class="modal-btn modal-btn-danger" onclick="resetPlanToDefault()" title="Vervang het plan in de Gist door de app-standaard">↩ Reset naar app-default</button>
+      <div style="flex:1"></div>
+      <button class="modal-btn" onclick="reloadPlanEditor()" title="Herlaad het huidige plan in dit tekstveld">↻ Herlaad</button>
+      <button class="modal-btn modal-btn-primary" onclick="savePlanFromEditor()">💾 Opslaan naar Gist</button>
     </div>
   </div>
 </div>
@@ -2134,6 +2159,93 @@ async function planSyncUI() {
     }
   } catch(e) {
     setSyncMsg('❌ Plan-sync mislukt: ' + (e.message || e), 'err');
+  }
+}
+
+// ============================================================
+// PLAN EDITOR (ruwe JSON) — schrijft naar Gist als 'user-edited'
+// ============================================================
+function planEditableContent() {
+  return {
+    version: (activePlan && activePlan.version) || 1,
+    meta: activePlan.meta,
+    sessions: activePlan.sessions,
+    weekPlans: activePlan.weekPlans
+  };
+}
+function setPlanEditorMsg(msg, type) {
+  const el = document.getElementById('planEditorMsg');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = type === 'err' ? '#d32f2f' : (type === 'ok' ? '#0F6E56' : '#888');
+}
+function openPlanEditor() {
+  closeSync();
+  reloadPlanEditor();
+  document.getElementById('planEditorModal').classList.add('active');
+}
+function reloadPlanEditor() {
+  document.getElementById('planEditorText').value = JSON.stringify(planEditableContent(), null, 2);
+  const cfg = getSyncConfig();
+  if (!cfg || !cfg.token || !cfg.gistId) {
+    setPlanEditorMsg('⚠️ Geen sync ingesteld — opslaan vereist een Gist-verbinding (☁︎).', 'err');
+  } else {
+    const src = (activePlan && activePlan._meta && activePlan._meta.source) || 'default-seed';
+    setPlanEditorMsg('Huidig plan v' + ((activePlan && activePlan.version) || 1) + ' · bron: ' + src);
+  }
+}
+function closePlanEditor() {
+  document.getElementById('planEditorModal').classList.remove('active');
+}
+function onPlanEditorBgClick(ev) {
+  if (ev.target.id === 'planEditorModal') closePlanEditor();
+}
+
+function rerenderAfterPlan() {
+  try { renderWeek(activeWeek); } catch(e) {}
+  try { renderToday(); } catch(e) {}
+  try { renderSeason(); } catch(e) {}
+  try { renderStatus(); } catch(e) {}
+}
+
+async function savePlanFromEditor() {
+  const cfg = getSyncConfig();
+  if (!cfg || !cfg.token || !cfg.gistId) { setPlanEditorMsg('❌ Stel eerst sync in (☁︎) om op te slaan.', 'err'); return; }
+  let parsed;
+  try { parsed = JSON.parse(document.getElementById('planEditorText').value); }
+  catch(e) { setPlanEditorMsg('❌ Ongeldige JSON: ' + e.message, 'err'); return; }
+  if (!isValidPlan(parsed)) {
+    setPlanEditorMsg('❌ Plan mist verplichte velden (meta[], sessions{}, weekPlans{}).', 'err');
+    return;
+  }
+  // Versie ophogen zodat het duidelijk een nieuwe, bewerkte versie is
+  parsed.version = Math.max(parsed.version || 0, (activePlan && activePlan.version) || 0) + 1;
+  setPlanEditorMsg('Opslaan…');
+  try {
+    const blob = serializePlan(parsed, 'user-edited', planContentHash(DEFAULT_PLAN));
+    await gistUpdateFile(cfg.gistId, cfg.token, PLAN_FILE, blob);
+    applyPlan(blob);
+    rerenderAfterPlan();
+    setPlanEditorMsg('✅ Opgeslagen naar Gist (v' + parsed.version + ', user-edited).', 'ok');
+  } catch(e) {
+    setPlanEditorMsg('❌ Opslaan mislukt: ' + (e.message || e), 'err');
+  }
+}
+
+async function resetPlanToDefault() {
+  const cfg = getSyncConfig();
+  if (!cfg || !cfg.token || !cfg.gistId) { setPlanEditorMsg('❌ Stel eerst sync in (☁︎).', 'err'); return; }
+  if (!confirm('Het plan in de Gist vervangen door de app-standaard?\n\nJe eigen plan-bewerkingen gaan verloren (je trainingslog/voortgang blijft behouden).')) return;
+  setPlanEditorMsg('Resetten…');
+  try {
+    const blob = serializePlan(DEFAULT_PLAN, 'default-seed', planContentHash(DEFAULT_PLAN));
+    await gistUpdateFile(cfg.gistId, cfg.token, PLAN_FILE, blob);
+    applyPlan(DEFAULT_PLAN);
+    rerenderAfterPlan();
+    reloadPlanEditor();
+    setPlanEditorMsg('✅ Plan gereset naar app-default.', 'ok');
+  } catch(e) {
+    setPlanEditorMsg('❌ Reset mislukt: ' + (e.message || e), 'err');
   }
 }
 
