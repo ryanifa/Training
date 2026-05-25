@@ -1558,7 +1558,8 @@ let state = {
   feedback: {},
   metrics: {},
   strength: [],
-  chatMessages: []
+  chatMessages: [],
+  importedFits: []
 };
 
 // Bouw runtime week-data uit het verse plan + user overrides
@@ -1641,7 +1642,8 @@ function buildStateBlob() {
     feedback: state.feedback,
     metrics: state.metrics,
     strength: state.strength,
-    chatMessages: state.chatMessages
+    chatMessages: state.chatMessages,
+    importedFits: state.importedFits
   };
 }
 
@@ -1656,6 +1658,7 @@ function applyStateBlob(saved) {
   if (saved.metrics && typeof saved.metrics === 'object') state.metrics = saved.metrics;
   if (Array.isArray(saved.strength)) state.strength = saved.strength;
   if (Array.isArray(saved.chatMessages)) state.chatMessages = saved.chatMessages;
+  if (Array.isArray(saved.importedFits)) state.importedFits = saved.importedFits;
 
   // Legacy migratie (oude weekData-structuur)
   if (saved.weekData && typeof saved.weekData === 'object') {
@@ -3642,7 +3645,18 @@ async function handleFitFiles(fileList) {
         parser.parse(buf, (err, data) => err ? rej(err) : res(data));
       });
       fi.item = fitToItem(parsed);
-      fi.status = 'ready';
+      const fp = fi.item._fingerprint;
+      const alreadyImported = fp && (state.importedFits || []).includes(fp);
+      const inBatch = fp && fitItems.some(o => o !== fi && o.item && o.item._fingerprint === fp);
+      if (alreadyImported) {
+        fi.status = 'duplicate';
+        fi.error = 'Deze activiteit is al eerder geïmporteerd';
+      } else if (inBatch) {
+        fi.status = 'duplicate';
+        fi.error = 'Dezelfde activiteit zit al in deze lijst';
+      } else {
+        fi.status = 'ready';
+      }
     } catch(e) {
       fi.error = e.message || String(e);
       fi.status = 'error';
@@ -3650,7 +3664,10 @@ async function handleFitFiles(fileList) {
     renderFitItems();
   }
   const ready = fitItems.filter(x => x.status === 'ready').length;
-  setImportMsg(ready + ' sessie(s) klaar voor import');
+  const dupes = fitItems.filter(x => x.status === 'duplicate').length;
+  let msg = ready + ' sessie(s) klaar voor import';
+  if (dupes > 0) msg += ' · ' + dupes + ' al geïmporteerd (overgeslagen)';
+  setImportMsg(msg, dupes > 0 && ready === 0 ? 'err' : undefined);
   document.getElementById('fitImportBtn').disabled = ready === 0;
 }
 
@@ -3721,6 +3738,12 @@ function fitToItem(parsed) {
     }
   }
 
+  // Vingerafdruk om dubbele import te detecteren: starttijd (uniek per
+  // activiteit) + sport + duur. Onafhankelijk van de bestandsnaam.
+  let fpTime = '';
+  if (startTime) { const d = new Date(startTime); if (!isNaN(d)) fpTime = d.toISOString(); }
+  const fingerprint = (fpTime || isoDate || '') + '|' + sport + '|' + (totalSec ? Math.round(totalSec) : '');
+
   return {
     datum: isoDate,
     sessie_type: sessieType,
@@ -3729,7 +3752,8 @@ function fitToItem(parsed) {
     metrics: m,
     _sport: sport,
     _appType: appType,
-    _autoMatched: autoMatched
+    _autoMatched: autoMatched,
+    _fingerprint: fingerprint
   };
 }
 
@@ -3765,6 +3789,12 @@ function renderFitItems() {
         '<span>' + escapeHtml(fi.file.name) + '</span>' +
         '<button class="fit-item-rm" onclick="removeFitItem(\'' + fi.id + '\')">×</button></div>' +
         '<div class="fit-item-err">❌ ' + escapeHtml(fi.error) + '</div></div>';
+    }
+    if (fi.status === 'duplicate') {
+      return '<div class="fit-item" style="opacity:0.7;border-left:3px solid #EF9F27"><div class="fit-item-head">' +
+        '<span>' + escapeHtml(fi.file.name) + '</span>' +
+        '<button class="fit-item-rm" onclick="removeFitItem(\'' + fi.id + '\')">×</button></div>' +
+        '<div class="fit-item-err" style="color:#854F0B">⚠️ ' + escapeHtml(fi.error || 'Al geïmporteerd') + ' — overgeslagen</div></div>';
     }
     const it = fi.item;
     const sessOpts = buildSessieTypeOptions(it._appType, it.sessie_type);
@@ -3823,6 +3853,12 @@ async function processFitImport() {
   const results = [];
   for (const fi of toImport) {
     const r = await importSingle(fi.item);
+    if (r.success && fi.item._fingerprint) {
+      state.importedFits = state.importedFits || [];
+      if (!state.importedFits.includes(fi.item._fingerprint)) {
+        state.importedFits.push(fi.item._fingerprint);
+      }
+    }
     results.push(r);
   }
   await saveState();
