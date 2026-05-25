@@ -306,6 +306,15 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 .coach-setup-banner { background: #FAEEDA; border-left: 3px solid #EF9F27; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-bottom: 12px; font-size: 13px; color: #854F0B; }
 .coach-setup-banner a { color: #854F0B; font-weight: bold; }
 
+/* Weekschema-editor */
+.we-day { border: 1px solid #eee; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; }
+.we-day-name { font-weight: bold; font-size: 13px; margin-bottom: 4px; }
+.we-day-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; min-height: 22px; }
+.we-pill { background: #EEF2FB; border: 1px solid #c9d6ee; border-radius: 12px; padding: 3px 4px 3px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 2px; }
+.we-pill button { background: none; border: 0; color: #d32f2f; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 3px; }
+.we-empty { color: #aaa; font-size: 12px; font-style: italic; }
+.we-day select { width: 100%; padding: 5px 7px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; background: white; font-family: inherit; }
+
 /* FIT import */
 .fit-dropzone { border: 2px dashed #ccc; border-radius: 8px; padding: 22px 16px; text-align: center; cursor: pointer; margin-bottom: 12px; transition: all 0.15s; background: #fafafa; }
 .fit-dropzone:hover { border-color: #4fc3f7; background: #f0f9ff; }
@@ -421,6 +430,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
   </div>
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">
     <button class="week-nav-btn" style="flex:0;font-size:11px;padding:5px 10px;background:#f8f8f8" onclick="cleanWeek()" title="Maakt verplaatsingen en vervangingen in deze week ongedaan en zet de week terug naar het oorspronkelijke plan">🔄 Reset naar plan</button>
+    <button class="week-nav-btn" style="flex:0;font-size:11px;padding:5px 10px;background:#E1F5EE;border-color:#1D9E75;color:#0F6E56" onclick="openWeekEditor()" title="Wijzig het plan zelf: sessies per dag toevoegen/verwijderen (alle apparaten)">✏️ Weekschema</button>
     <button class="week-nav-btn" style="flex:0;font-size:11px;padding:5px 10px;background:#EEEDFE;border-color:#7F77DD;color:#534AB7" onclick="openImport()">📂 Importeer .FIT</button>
   </div>
   <div class="week-info" id="weekInfo"></div>
@@ -768,6 +778,33 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
       <div style="flex:1"></div>
       <button class="modal-btn" onclick="reloadPlanEditor()" title="Herlaad het huidige plan in dit tekstveld">↻ Herlaad</button>
       <button class="modal-btn modal-btn-primary" onclick="savePlanFromEditor()">💾 Opslaan naar Gist</button>
+    </div>
+  </div>
+</div>
+
+<!-- WEEK EDITOR MODAL -->
+<div class="modal-overlay" id="weekEditorModal" onclick="onWeekEditorBgClick(event)">
+  <div class="modal-box" style="max-width:600px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">✏️ Weekschema bewerken</div>
+        <div class="modal-sub">Wijzigt het plan zelf (op al je apparaten), niet alleen verschuiven. Opslaan schrijft naar de Gist.</div>
+      </div>
+      <button class="modal-close" onclick="closeWeekEditor()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="week-nav" style="margin-bottom:10px">
+        <button class="week-nav-btn" id="weBtnPrev" onclick="weekEditorNav(-1)">← Vorige</button>
+        <div class="week-nav-btn" id="weLabel" style="flex:2;cursor:default;font-weight:bold"></div>
+        <button class="week-nav-btn" id="weBtnNext" onclick="weekEditorNav(1)">Volgende →</button>
+      </div>
+      <div id="weekEditorDays"></div>
+      <div class="modal-meta" id="weekEditorMsg" style="margin-top:8px;min-height:16px"></div>
+    </div>
+    <div class="modal-footer" style="flex-wrap:wrap;gap:6px">
+      <div style="flex:1"></div>
+      <button class="modal-btn" onclick="closeWeekEditor()">Annuleren</button>
+      <button class="modal-btn modal-btn-primary" onclick="saveWeekEditor()">💾 Opslaan naar Gist</button>
     </div>
   </div>
 </div>
@@ -2246,6 +2283,118 @@ async function resetPlanToDefault() {
     setPlanEditorMsg('✅ Plan gereset naar app-default.', 'ok');
   } catch(e) {
     setPlanEditorMsg('❌ Reset mislukt: ' + (e.message || e), 'err');
+  }
+}
+
+// ============================================================
+// WEEKSCHEMA-EDITOR — sessies per dag in het plan toevoegen/verwijderen
+// ============================================================
+let weekEditorDraft = null;  // diepe kopie van activePlan.weekPlans
+let weekEditorWeek = null;
+
+function buildPlanSessionOptions() {
+  const groups = { run: '🏃 Lopen', bike: '🚴 Fietsen', swim: '🏊 Zwemmen', str: '💪 Kracht', event: '📅 Event', race: '🏁 Race' };
+  const known = Object.keys(groups);
+  let html = '<option value="">+ sessie toevoegen…</option>';
+  known.forEach(type => {
+    const ids = Object.keys(SESSIONS).filter(sid => SESSIONS[sid].type === type);
+    if (!ids.length) return;
+    html += '<optgroup label="' + groups[type] + '">';
+    ids.forEach(sid => { html += '<option value="' + sid + '">' + escapeHtml(SESSIONS[sid].label) + ' (' + sid + ')</option>'; });
+    html += '</optgroup>';
+  });
+  const others = Object.keys(SESSIONS).filter(sid => known.indexOf(SESSIONS[sid].type) < 0);
+  if (others.length) {
+    html += '<optgroup label="Overig">';
+    others.forEach(sid => { html += '<option value="' + sid + '">' + escapeHtml(SESSIONS[sid].label) + ' (' + sid + ')</option>'; });
+    html += '</optgroup>';
+  }
+  return html;
+}
+
+function setWeekEditorMsg(msg, type) {
+  const el = document.getElementById('weekEditorMsg');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = type === 'err' ? '#d32f2f' : (type === 'ok' ? '#0F6E56' : '#888');
+}
+
+function openWeekEditor() {
+  weekEditorDraft = JSON.parse(JSON.stringify(activePlan.weekPlans || {}));
+  weekEditorWeek = activeWeek || getCurrentWeekId();
+  renderWeekEditor();
+  const cfg = getSyncConfig();
+  if (!cfg || !cfg.token || !cfg.gistId) setWeekEditorMsg('⚠️ Geen sync — opslaan vereist een Gist-verbinding (☁︎).', 'err');
+  else setWeekEditorMsg('');
+  document.getElementById('weekEditorModal').classList.add('active');
+}
+function closeWeekEditor() { document.getElementById('weekEditorModal').classList.remove('active'); }
+function onWeekEditorBgClick(ev) { if (ev.target.id === 'weekEditorModal') closeWeekEditor(); }
+
+function weekEditorNav(dir) {
+  const ids = WEEK_META.map(m => m.id);
+  const ni = ids.indexOf(weekEditorWeek) + dir;
+  if (ni >= 0 && ni < ids.length) { weekEditorWeek = ids[ni]; renderWeekEditor(); }
+}
+
+function renderWeekEditor() {
+  const meta = WEEK_META.find(m => m.id === weekEditorWeek);
+  let days = weekEditorDraft[weekEditorWeek];
+  if (!Array.isArray(days)) days = [];
+  while (days.length < 7) days.push([]);
+  weekEditorDraft[weekEditorWeek] = days;
+
+  document.getElementById('weLabel').textContent = meta ? meta.label : weekEditorWeek;
+  const ids = WEEK_META.map(m => m.id);
+  const i = ids.indexOf(weekEditorWeek);
+  document.getElementById('weBtnPrev').disabled = (i <= 0);
+  document.getElementById('weBtnNext').disabled = (i >= ids.length - 1);
+
+  const dagNamen = ['Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag', 'Zondag'];
+  const opts = buildPlanSessionOptions();
+  document.getElementById('weekEditorDays').innerHTML = days.map((sids, di) => {
+    const pills = (sids || []).map((sid, idx) => {
+      const lbl = SESSIONS[sid] ? SESSIONS[sid].label : sid;
+      return '<span class="we-pill">' + escapeHtml(lbl) +
+        ' <button onclick="weekEditorRemove(' + di + ',' + idx + ')" title="Verwijderen">×</button></span>';
+    }).join('');
+    return '<div class="we-day">' +
+      '<div class="we-day-name">' + dagNamen[di] + '</div>' +
+      '<div class="we-day-pills">' + (pills || '<span class="we-empty">rust</span>') + '</div>' +
+      '<select onchange="weekEditorAdd(' + di + ',this.value);this.value=\'\'">' + opts + '</select>' +
+      '</div>';
+  }).join('');
+}
+
+function weekEditorAdd(di, sid) {
+  if (!sid) return;
+  weekEditorDraft[weekEditorWeek][di].push(sid);
+  renderWeekEditor();
+}
+function weekEditorRemove(di, idx) {
+  weekEditorDraft[weekEditorWeek][di].splice(idx, 1);
+  renderWeekEditor();
+}
+
+async function saveWeekEditor() {
+  const cfg = getSyncConfig();
+  if (!cfg || !cfg.token || !cfg.gistId) { setWeekEditorMsg('❌ Stel eerst sync in (☁︎) om op te slaan.', 'err'); return; }
+  setWeekEditorMsg('Opslaan…');
+  try {
+    const plan = {
+      version: ((activePlan && activePlan.version) || 1) + 1,
+      meta: activePlan.meta,
+      sessions: activePlan.sessions,
+      weekPlans: weekEditorDraft
+    };
+    if (!isValidPlan(plan)) { setWeekEditorMsg('❌ Ongeldig plan.', 'err'); return; }
+    const blob = serializePlan(plan, 'user-edited', planContentHash(DEFAULT_PLAN));
+    await gistUpdateFile(cfg.gistId, cfg.token, PLAN_FILE, blob);
+    applyPlan(blob);
+    rerenderAfterPlan();
+    setWeekEditorMsg('✅ Opgeslagen naar Gist (v' + plan.version + ').', 'ok');
+  } catch(e) {
+    setWeekEditorMsg('❌ Opslaan mislukt: ' + (e.message || e), 'err');
   }
 }
 
