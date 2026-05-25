@@ -2323,8 +2323,37 @@ function renderCoachMessages() {
   c.scrollTop = c.scrollHeight;
 }
 
+// Compacte weergave van het volledige plan voor de coach-context.
+// sessions: id -> details (incl. stappen). schema: weekId -> dag -> sessionId's.
+function buildPlanContext() {
+  const sessions = {};
+  Object.keys(SESSIONS).forEach(id => {
+    const s = SESSIONS[id];
+    sessions[id] = {
+      type: s.type,
+      label: s.label,
+      dur: s.dur,
+      title: s.title,
+      steps: (s.steps || []).reduce((acc, g) => acc.concat(
+        (g.items || []).map(it => ({ zone: it.z, naam: it.n, duur: it.d, doel: it.m, note: it.note || '' }))
+      ), [])
+    };
+  });
+  const dagNamen = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'];
+  const schema = {};
+  WEEK_META.forEach(meta => {
+    const wk = WEEKS[meta.id];
+    if (!wk) return;
+    const dagen = {};
+    wk.days.forEach((d, i) => { dagen[dagNamen[i]] = d.sessions; });
+    schema[meta.id] = { label: meta.label, start: meta.start, dagen: dagen };
+  });
+  return { sessions: sessions, schema: schema };
+}
+
 function buildCoachSystemPrompt() {
   const today = new Date().toISOString().slice(0, 10);
+  const plan = buildPlanContext();
   const stateCtx = {
     done: state.done || {},
     missed: state.missed || {},
@@ -2335,7 +2364,8 @@ function buildCoachSystemPrompt() {
     metrics: state.metrics || {},
     strength: state.strength || []
   };
-  return `Je bent een persoonlijke triathlon/duursport-coach voor Ryan Douglas. Vandaag is ${today}.
+
+  const staticBlock = `Je bent een persoonlijke triathlon/duursport-coach voor Ryan Douglas.
 
 Doel-races 2026:
 - 70.3 Luxemburg — 11 juli (A-race)
@@ -2343,20 +2373,35 @@ Doel-races 2026:
 - Zwarte Plasje (zwemmarathon) — 13 september
 - Marathon Amsterdam — 1 november
 
-Je hebt toegang tot zijn trainingsdata hieronder. State-conventies:
-- done: { "weekId:dayIndex:sessionId": true } voltooide sessies
+Je hebt toegang tot zijn VOLLEDIGE trainingsplan (sessiebibliotheek + weekschema) én zijn werkelijke voortgang.
+
+SESSIE-BIBLIOTHEEK — sessionId → { type, label, dur(=geplande duur), title, steps[ {zone, naam, duur, doel, note} ] }. "doel" bevat pace/HR/vermogen/cadans-targets:
+${JSON.stringify(plan.sessions)}
+
+WEEKSCHEMA — weekId → { label, start(=maandag), dagen{ ma..zo → [sessionId's] } }. Dit is het ORIGINELE plan vóór verplaatsingen/vervangingen:
+${JSON.stringify(plan.schema)}
+
+State-conventies (zijn werkelijke acties t.o.v. het plan):
+- done: { "weekId:dayIndex:sessionId": true } voltooide sessies (dayIndex 0=ma..6=zo)
 - missed: gemiste sessies (zelfde sleutel-structuur)
-- rest: { "weekId:dayIndex": true } BEWUSTE rustdag (medisch/preventief advies, herstel). Geplande sessies op deze dagen NIET als gemist tellen — het was een welbewuste keuze, niet een discipline-gat.
-- moves: sessies die naar een andere dag verplaatst zijn
+- rest: { "weekId:dayIndex": true } BEWUSTE rustdag (herstel/preventie). Geplande sessies hier NIET als gemist tellen — bewuste keuze, geen discipline-gat.
+- moves: { "weekId:fromDay:sessionId": toDay } sessie verplaatst naar andere dag binnen de week
 - skips: sessies vervangen door iets anders
 - feedback: vrije-tekst notities per sessie { text, updatedAt }
 - metrics: werkelijke meetwaarden per sessie (duur_min, afstand_km, hr_gem, etc.)
 - strength: array van krachtsessies met { date, exercise, sets:[{reps,weight,rpe}], note }
 
-Antwoord beknopt en concreet in het Nederlands. Geef cijfers waar je ze hebt. Geef advies dat aansluit bij wat hij echt gedaan heeft (uit done/missed/feedback/metrics), niet bij wat oorspronkelijk gepland stond. Wees eerlijk over discipline-gaten of trends.
+Antwoord beknopt en concreet in het Nederlands. Combineer het plan (wat gepland stond, uit het weekschema + sessiebibliotheek) met wat hij echt deed (done/missed/feedback/metrics). Geef cijfers waar je ze hebt. Wees eerlijk over discipline-gaten of trends.`;
 
-TRAININGSDATA (JSON):
+  const dynamicBlock = `Vandaag is ${today}.
+
+ZIJN VOORTGANG / ACTIES (JSON):
 ${JSON.stringify(stateCtx, null, 2)}`;
+
+  return [
+    { type: 'text', text: staticBlock, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: dynamicBlock }
+  ];
 }
 
 function onCoachInputKey(e) {
@@ -2394,7 +2439,7 @@ async function sendCoachMessage() {
   c.scrollTop = c.scrollHeight;
 
   try {
-    const systemPrompt = buildCoachSystemPrompt();
+    const systemBlocks = buildCoachSystemPrompt();
     const apiMessages = state.chatMessages
       .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content && m.content.trim())
       .slice(-30)
@@ -2411,7 +2456,7 @@ async function sendCoachMessage() {
       body: JSON.stringify({
         model: cfg.model || DEFAULT_COACH_MODEL,
         max_tokens: 1024,
-        system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+        system: systemBlocks,
         messages: apiMessages
       })
     });
