@@ -740,6 +740,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
       <button class="modal-btn" onclick="forcePullUI()" title="Cloud → lokaal (overschrijf)">⬇ Forceer ophalen</button>
       <button class="modal-btn" onclick="forcePushUI()" title="Lokaal → cloud (overschrijf)">⬆ Forceer uploaden</button>
       <div style="flex:1"></div>
+      <button class="modal-btn" onclick="planSyncUI()" title="Plan (sessies + weken) naar Gist">📋 Plan-sync</button>
       <button class="modal-btn" onclick="syncNowManual()">🔄 Sync nu</button>
       <button class="modal-btn modal-btn-primary" onclick="connectSync()">Verbinden</button>
     </div>
@@ -2100,6 +2101,39 @@ async function forcePushUI() {
     setSyncMsg('✅ Lokale versie naar cloud gepusht', 'ok');
   } else {
     setSyncMsg('❌ Mislukt', 'err');
+  }
+}
+
+// Handmatige plan-sync met expliciete uitkomst/fout (loadPlanFromCloud slikt
+// fouten in voor de stille achtergrond-load; hier tonen we ze wel).
+async function planSyncUI() {
+  const cfg = getSyncConfig();
+  if (!cfg || !cfg.token || !cfg.gistId) { setSyncMsg('Eerst verbinden (token + gist)', 'err'); return; }
+  setSyncMsg('Plan synchroniseren…');
+  try {
+    const defaultHash = planContentHash(DEFAULT_PLAN);
+    const files = await gistFetchFiles(cfg.gistId, cfg.token);
+    const planFile = files && files[PLAN_FILE];
+    if (!planFile || typeof planFile.content !== 'string') {
+      await gistUpdateFile(cfg.gistId, cfg.token, PLAN_FILE, serializePlan(DEFAULT_PLAN, 'default-seed', defaultHash));
+      setSyncMsg('✅ Plan toegevoegd aan Gist (trainingPlan.json)', 'ok');
+      return;
+    }
+    let gp = null;
+    try { gp = JSON.parse(planFile.content); } catch(_) {}
+    const src = gp && gp._meta && gp._meta.source;
+    if (src === 'user-edited' && isValidPlan(gp)) {
+      applyPlan(gp);
+      renderWeek(activeWeek); renderToday(); renderSeason(); renderStatus();
+      setSyncMsg('✅ In-app plan uit Gist geladen (v' + (gp.version || '?') + ')', 'ok');
+    } else if (gp && gp._meta && gp._meta.defaultHash === defaultHash) {
+      setSyncMsg('✅ Plan al gesynct — identiek aan app-default', 'ok');
+    } else {
+      await gistUpdateFile(cfg.gistId, cfg.token, PLAN_FILE, serializePlan(DEFAULT_PLAN, 'default-seed', defaultHash));
+      setSyncMsg('✅ Plan in Gist bijgewerkt naar huidige app-versie', 'ok');
+    }
+  } catch(e) {
+    setSyncMsg('❌ Plan-sync mislukt: ' + (e.message || e), 'err');
   }
 }
 
