@@ -2669,16 +2669,19 @@ function toggleNav() {
   document.getElementById('mainNav').classList.toggle('open');
 }
 
-// Als het plan niet via de Actions-build is gepubliceerd (bv. directe
-// branch-publicatie), is __BUILD_VERSION__ niet vervangen. Toon dan een
-// nette datum-fallback i.p.v. de letterlijke placeholder.
+// Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
+// komt automatisch uit document.lastModified (verandert bij elke deploy),
+// zodat meerdere deploys op één dag onderscheidbaar zijn.
+const APP_VERSION = 47;
+
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
   if (!el) return;
-  if (el.textContent.indexOf('__BUILD_VERSION__') >= 0) {
-    const d = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
-    el.textContent = 'live · ' + d;
-  }
+  let stamp;
+  const lm = new Date(document.lastModified);
+  const base = isNaN(lm) ? new Date() : lm;
+  stamp = base.toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  el.textContent = 'v' + APP_VERSION + ' · ' + stamp;
 }
 
 function updateNextRaceSub() {
