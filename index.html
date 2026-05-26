@@ -2669,6 +2669,18 @@ function toggleNav() {
   document.getElementById('mainNav').classList.toggle('open');
 }
 
+// Als het plan niet via de Actions-build is gepubliceerd (bv. directe
+// branch-publicatie), is __BUILD_VERSION__ niet vervangen. Toon dan een
+// nette datum-fallback i.p.v. de letterlijke placeholder.
+function fixVersionFooter() {
+  const el = document.getElementById('appVersion');
+  if (!el) return;
+  if (el.textContent.indexOf('__BUILD_VERSION__') >= 0) {
+    const d = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
+    el.textContent = 'live · ' + d;
+  }
+}
+
 function updateNextRaceSub() {
   const races = [
     { date: '2026-05-30', name: 'De Oversteek' },
@@ -5025,6 +5037,7 @@ function init() {
   try { renderStatus(); } catch(e) { console.warn('renderStatus:', e); }
   try { renderSeason(); } catch(e) { console.warn('renderSeason:', e); }
   try { updateNextRaceSub(); } catch(e) { console.warn('updateNextRaceSub:', e); }
+  try { fixVersionFooter(); } catch(e) {}
   updateSyncBadge();
 
   // 2. Op de achtergrond: eerst het plan uit de Gist (kan DEFAULT_PLAN
