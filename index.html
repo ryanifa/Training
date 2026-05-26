@@ -1967,6 +1967,36 @@ function isValidPlan(p) {
     && Array.isArray(p.meta) && p.weekPlans && typeof p.weekPlans === 'object');
 }
 
+// Vul weken aan die in DEFAULT_PLAN zitten maar in dit plan ontbreken
+// (bv. door een eerdere inkorting), zonder bestaande weken/bewerkingen te
+// raken. Retourneert true als er iets is aangevuld. Sessies worden NIET
+// aangevuld (die mag je bewust verwijderen via de sessie-editor).
+function normalizePlanWeeks(plan) {
+  if (!plan || !Array.isArray(plan.meta) || !plan.weekPlans) return false;
+  const have = {};
+  plan.meta.forEach(m => { if (m && m.id) have[m.id] = true; });
+  let added = false;
+  DEFAULT_PLAN.meta.forEach(dm => {
+    if (!have[dm.id]) {
+      plan.meta.push(JSON.parse(JSON.stringify(dm)));
+      if (!plan.weekPlans[dm.id]) {
+        plan.weekPlans[dm.id] = (DEFAULT_PLAN.weekPlans[dm.id] || []).map(d => d.slice());
+      }
+      added = true;
+    }
+  });
+  if (added) {
+    const order = {};
+    DEFAULT_PLAN.meta.forEach((m, i) => { order[m.id] = i; });
+    plan.meta.sort((a, b) => {
+      const oa = order[a.id] !== undefined ? order[a.id] : 999;
+      const ob = order[b.id] !== undefined ? order[b.id] : 999;
+      return oa - ob;
+    });
+  }
+  return added;
+}
+
 // Laadt het plan uit de Gist (apart bestand). Retourneert true als er een
 // ander plan dan DEFAULT_PLAN actief is gezet (caller moet dan opnieuw renderen).
 //   - geen sync geconfigureerd     → DEFAULT_PLAN blijft (false)
@@ -1994,8 +2024,15 @@ async function loadPlanFromCloud() {
     }
     const meta = gistPlan._meta || {};
     if (meta.source === 'user-edited') {
+      const healed = normalizePlanWeeks(gistPlan);
       applyPlan(gistPlan);
-      console.info('[plan] In-app bewerkt plan uit Gist geladen (v' + (gistPlan.version || '?') + ')');
+      console.info('[plan] In-app bewerkt plan uit Gist geladen (v' + (gistPlan.version || '?') + ')' + (healed ? ' — ontbrekende weken aangevuld' : ''));
+      if (healed) {
+        try {
+          await gistUpdateFile(cfg.gistId, cfg.token, PLAN_FILE, serializePlan(gistPlan, 'user-edited', defaultHash));
+          console.info('[plan] Aangevulde weken teruggeschreven naar Gist');
+        } catch(_) {}
+      }
       return true;
     }
     // default-seed
