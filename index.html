@@ -1967,25 +1967,27 @@ function isValidPlan(p) {
     && Array.isArray(p.meta) && p.weekPlans && typeof p.weekPlans === 'object');
 }
 
-// Vul weken aan die in DEFAULT_PLAN zitten maar in dit plan ontbreken
-// (bv. door een eerdere inkorting), zonder bestaande weken/bewerkingen te
-// raken. Retourneert true als er iets is aangevuld. Sessies worden NIET
-// aangevuld (die mag je bewust verwijderen via de sessie-editor).
+// Vul aan wat in DEFAULT_PLAN zit maar in dit plan ontbreekt: zowel weken
+// in meta als plannen in weekPlans, ONAFHANKELIJK van elkaar (een ingekort
+// weekPlans wordt dus ook hersteld als meta nog compleet is). Bestaande
+// weken/bewerkingen blijven onaangeroerd; sessies worden NIET aangevuld
+// (die mag je bewust verwijderen via de sessie-editor).
 function normalizePlanWeeks(plan) {
   if (!plan || !Array.isArray(plan.meta) || !plan.weekPlans) return false;
-  const have = {};
-  plan.meta.forEach(m => { if (m && m.id) have[m.id] = true; });
-  let added = false;
+  const haveMeta = {};
+  plan.meta.forEach(m => { if (m && m.id) haveMeta[m.id] = true; });
+  let changed = false;
   DEFAULT_PLAN.meta.forEach(dm => {
-    if (!have[dm.id]) {
+    if (!haveMeta[dm.id]) {
       plan.meta.push(JSON.parse(JSON.stringify(dm)));
-      if (!plan.weekPlans[dm.id]) {
-        plan.weekPlans[dm.id] = (DEFAULT_PLAN.weekPlans[dm.id] || []).map(d => d.slice());
-      }
-      added = true;
+      changed = true;
+    }
+    if (!Array.isArray(plan.weekPlans[dm.id])) {
+      plan.weekPlans[dm.id] = (DEFAULT_PLAN.weekPlans[dm.id] || []).map(d => d.slice());
+      changed = true;
     }
   });
-  if (added) {
+  if (changed) {
     const order = {};
     DEFAULT_PLAN.meta.forEach((m, i) => { order[m.id] = i; });
     plan.meta.sort((a, b) => {
@@ -1994,7 +1996,7 @@ function normalizePlanWeeks(plan) {
       return oa - ob;
     });
   }
-  return added;
+  return changed;
 }
 
 // Laadt het plan uit de Gist (apart bestand). Retourneert true als er een
@@ -3420,10 +3422,10 @@ function showDebug() {
 }
 
 function renderWeek(key) {
-  activeWeek = key;
   const w = getWeekView(key);
   const meta = WEEK_META.find(m => m.id === key);
   if (!w || !meta) return;
+  activeWeek = key;
 
   // Week info bar
   document.getElementById('weekInfo').innerHTML = `
