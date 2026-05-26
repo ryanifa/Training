@@ -2,14 +2,22 @@
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Trainingsoverzicht Ryan Douglas 2026</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Training">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-size: 14px; }
 
 .sticky-top { position: sticky; top: 0; z-index: 60; }
-.header { background: #1a1a2e; color: white; padding: 14px 16px; }
+.header { background: #1a1a2e; color: white; padding: 14px 16px; padding-top: calc(14px + env(safe-area-inset-top, 0px)); }
 .header-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .header h1 { font-size: 20px; font-weight: bold; margin-bottom: 4px; line-height: 1.2; }
 .header .sub { font-size: 13px; opacity: 0.7; }
@@ -74,7 +82,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 /* RESPONSIVE: mobiel — dagen onder elkaar */
 @media (max-width: 600px) {
   body { font-size: 13px; }
-  .header { padding: 12px 12px; }
+  .header { padding: 12px 12px; padding-top: calc(12px + env(safe-area-inset-top, 0px)); }
   .header h1 { font-size: 18px; }
   .header .sub { font-size: 12px; }
   .header .sub-long { display: none; }
@@ -2672,7 +2680,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 47;
+const APP_VERSION = 48;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
