@@ -2680,7 +2680,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 50;
+const APP_VERSION = 51;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -4592,10 +4592,11 @@ function renderFitItems() {
         '<div class="fit-item-err">❌ ' + escapeHtml(fi.error) + '</div></div>';
     }
     if (fi.status === 'duplicate') {
-      return '<div class="fit-item" style="opacity:0.7;border-left:3px solid #EF9F27"><div class="fit-item-head">' +
+      return '<div class="fit-item" style="opacity:0.85;border-left:3px solid #EF9F27"><div class="fit-item-head">' +
         '<span>' + escapeHtml(fi.file.name) + '</span>' +
         '<button class="fit-item-rm" onclick="removeFitItem(\'' + fi.id + '\')">×</button></div>' +
-        '<div class="fit-item-err" style="color:#854F0B">⚠️ ' + escapeHtml(fi.error || 'Al geïmporteerd') + ' — overgeslagen</div></div>';
+        '<div class="fit-item-err" style="color:#854F0B">⚠️ ' + escapeHtml(fi.error || 'Al geïmporteerd') + '</div>' +
+        '<button class="modal-btn" style="margin-top:6px;font-size:11px" onclick="forceImportFitItem(\'' + fi.id + '\')">Toch importeren</button></div>';
     }
     const it = fi.item;
     const sessOpts = buildSessieTypeOptions(it._appType, it.sessie_type);
@@ -4641,6 +4642,18 @@ function removeFitItem(id) {
   const ready = fitItems.filter(x => x.status === 'ready').length;
   document.getElementById('fitImportBtn').disabled = ready === 0;
   if (fitItems.length === 0) setImportMsg('');
+}
+
+// Negeer de dubbel-detectie voor dit item en importeer 'm alsnog
+function forceImportFitItem(id) {
+  const fi = fitItems.find(x => x.id === id);
+  if (!fi || !fi.item) return;
+  fi.status = 'ready';
+  fi.error = null;
+  renderFitItems();
+  const ready = fitItems.filter(x => x.status === 'ready').length;
+  document.getElementById('fitImportBtn').disabled = ready === 0;
+  setImportMsg(ready + ' sessie(s) klaar voor import');
 }
 
 async function processFitImport() {
