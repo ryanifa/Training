@@ -3330,7 +3330,12 @@ function navWeek(dir) {
   const keys = WEEK_META.map(m => m.id);
   const i = keys.indexOf(activeWeek);
   const ni = i + dir;
-  if (ni >= 0 && ni < keys.length) renderWeek(keys[ni]);
+  console.info('[nav] dir=' + dir + ' activeWeek=' + activeWeek + ' index=' + i + ' totaalWeken=' + keys.length + ' → doel=' + (keys[ni] || 'GEEN') + ' WEEKS-keys=' + Object.keys(WEEKS).length);
+  if (ni >= 0 && ni < keys.length) {
+    const target = getWeekView(keys[ni]);
+    console.info('[nav] getWeekView(' + keys[ni] + ')=' + (target ? 'OK' : 'NULL'));
+    renderWeek(keys[ni]);
+  }
 }
 
 async function resetWeek() {
