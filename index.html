@@ -2657,7 +2657,7 @@ function showPage(id, btn) {
   }
   const nav = document.getElementById('mainNav');
   if (nav) nav.classList.remove('open');
-  if(id === 'vandaag') renderToday();
+  if(id === 'vandaag') { activeWeek = getCurrentWeekId(); renderToday(); }
   if(id === 'week') renderWeek(activeWeek);
   if(id === 'status') renderStatus();
   if(id === 'seizoen') renderSeason();
@@ -3330,12 +3330,7 @@ function navWeek(dir) {
   const keys = WEEK_META.map(m => m.id);
   const i = keys.indexOf(activeWeek);
   const ni = i + dir;
-  console.info('[nav] dir=' + dir + ' activeWeek=' + activeWeek + ' index=' + i + ' totaalWeken=' + keys.length + ' → doel=' + (keys[ni] || 'GEEN') + ' WEEKS-keys=' + Object.keys(WEEKS).length);
-  if (ni >= 0 && ni < keys.length) {
-    const target = getWeekView(keys[ni]);
-    console.info('[nav] getWeekView(' + keys[ni] + ')=' + (target ? 'OK' : 'NULL'));
-    renderWeek(keys[ni]);
-  }
+  if (ni >= 0 && ni < keys.length) renderWeek(keys[ni]);
 }
 
 async function resetWeek() {
@@ -3652,8 +3647,10 @@ function buildSessionDetailHTML(weekId, di, sid) {
 function renderToday() {
   const container = document.getElementById('todayContent');
   if (!container) return;
+  // NIET de globale activeWeek overschrijven — dat zou de week-navigatie
+  // resetten als renderWeek aan het eind renderToday aanroept. activeWeek
+  // wordt op de huidige week gezet bij het openen van de Vandaag-tab.
   const weekId = getCurrentWeekId();
-  activeWeek = weekId;
   const di = getCurrentDayIndex();
   const w = getWeekView(weekId);
   if (!w || !w.days[di]) {
