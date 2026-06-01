@@ -1427,7 +1427,7 @@ function renderEventCard(e, isPast) {
       countdownHtml + moveBtn +
     '</div>' +
     '<div style="flex:1;margin:0 10px">' +
-      '<div class="event-name">' + e.name + '</div>' +
+      '<div class="event-name">' + escapeHtml((e.sid && SESSIONS[e.sid] && SESSIONS[e.sid].label) ? SESSIONS[e.sid].label : e.name) + '</div>' +
       '<div class="event-detail">' + e.detail + '</div>' +
     '</div>' +
     '<span class="event-badge ' + badgeClass + '">' + e.tier + '</span>' +
@@ -2762,7 +2762,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 56;
+const APP_VERSION = 57;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3268,7 +3268,9 @@ Als — en alléén als — de gebruiker vraagt om het plan, schema of een sessi
 Elke change in "changes" is één van:
 - Weekschema (welke sessies op welke dag): { "type": "weekPlan", "weekId": "w6", "days": { "5": ["bike_long"], "6": ["swim_tech","swim_ow_long"] } }. dayIndex 0=ma..6=zo; alleen de genoemde dagen veranderen; gebruik [] voor rust.
 - Sessie-inhoud (de bibliotheek, geldt voor alle weken die de sessie gebruiken): { "type": "session", "sessionId": "bike_z3", "session": { "type":"bike", "label":"Fiets Z3", "dur":"±1u 30 min", "title":"Fietsen — zone 3", "steps":[{"sess":"","items":[{"z":"sz2","n":"Warming-up","d":"10 min","m":"<130W · HR <120","note":""}]}] } }
-Regels: gebruik alléén bestaande sessionId's, of voeg eerst een nieuwe sessie toe via een 'session'-change voordat je 'm in een weekPlan zet. Geef nooit ongevraagd een plan-patch. De gebruiker keurt de wijziging in de app goed; jij past niets zelf toe.`;
+Regels: gebruik alléén bestaande sessionId's, of voeg eerst een nieuwe sessie toe via een 'session'-change voordat je 'm in een weekPlan zet. Geef nooit ongevraagd een plan-patch. De gebruiker keurt de wijziging in de app goed; jij past niets zelf toe.
+
+Voor hernoemen van een race of training (bv. "Herfstmarathon" naar "Marathon Den Haag"): gebruik een 'session'-change met dezelfde sessionId waarin je label en title (en eventueel detail-velden) aanpast. Het seizoen-overzicht en de week-pillen pakken het label automatisch op. Voor verwijderen van een race uit het seizoen: gebruik een 'weekPlan'-change die de race uit z'n dag-array haalt (alleen die dag aanpassen, niet de hele week). De race verdwijnt dan uit het schema (wordt in het seizoen-overzicht gemarkeerd als "niet in plan", her-plaatsbaar via de Verzet-knop).`;
 
   const dynamicBlock = `Vandaag is ${today}.
 
