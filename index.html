@@ -2464,6 +2464,14 @@ function renderWeekEditor() {
   document.getElementById('weBtnNext').disabled = (i >= ids.length - 1);
 
   const dagNamen = ['Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag', 'Zondag'];
+  const months = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+  const wkStart = meta ? parseDate(meta.start) : null;
+  function dateLabel(di) {
+    if (!wkStart || isNaN(wkStart)) return '';
+    const d = new Date(wkStart);
+    d.setDate(wkStart.getDate() + di);
+    return d.getDate() + ' ' + months[d.getMonth()];
+  }
   const opts = buildPlanSessionOptions();
   document.getElementById('weekEditorDays').innerHTML = days.map((sids, di) => {
     const pills = (sids || []).map((sid, idx) => {
@@ -2472,7 +2480,7 @@ function renderWeekEditor() {
         ' <button onclick="weekEditorRemove(' + di + ',' + idx + ')" title="Verwijderen">×</button></span>';
     }).join('');
     return '<div class="we-day">' +
-      '<div class="we-day-name">' + dagNamen[di] + '</div>' +
+      '<div class="we-day-name">' + dagNamen[di] + ' <span style="font-weight:normal;color:#888;font-size:11px">' + dateLabel(di) + '</span></div>' +
       '<div class="we-day-pills">' + (pills || '<span class="we-empty">rust</span>') + '</div>' +
       '<select onchange="weekEditorAdd(' + di + ',this.value);this.value=\'\'">' + opts + '</select>' +
       '</div>';
@@ -2701,7 +2709,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 52;
+const APP_VERSION = 53;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
