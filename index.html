@@ -1410,10 +1410,14 @@ function renderEventCard(e, isPast) {
   const countdownHtml = !isPast
     ? '<div style="font-size:11px;color:#888;margin-top:2px">' + formatCountdown(e.daysUntil) + '</div>'
     : '<div style="font-size:11px;color:#0F6E56;margin-top:2px">✅ voltooid</div>';
+  const canMove = !isPast && e.sid && getPlanDateForSession(e.sid);
+  const moveBtn = canMove
+    ? '<button class="modal-btn" style="font-size:11px;padding:3px 8px;margin-top:4px" onclick="promptMoveRace(\'' + e.sid + '\',\'' + e.date + '\')">📅 Verzet</button>'
+    : '';
   return '<div class="event-card ' + borderClass + '" style="' + extraStyle + pastStyle + '">' +
     '<div>' +
       '<div class="event-date">' + formatEventDate(e.date) + '</div>' +
-      countdownHtml +
+      countdownHtml + moveBtn +
     '</div>' +
     '<div style="flex:1;margin:0 10px">' +
       '<div class="event-name">' + e.name + '</div>' +
@@ -1421,6 +1425,42 @@ function renderEventCard(e, isPast) {
     '</div>' +
     '<span class="event-badge ' + badgeClass + '">' + e.tier + '</span>' +
   '</div>';
+}
+
+// Verzet een race naar een nieuwe datum — datum is leidend, het juiste
+// week+dag-vakje wordt berekend uit het plan-rooster.
+async function promptMoveRace(sid, currentDate) {
+  const cfg = getSyncConfig();
+  if (!cfg || !cfg.token || !cfg.gistId) { alert('Stel eerst sync in (☁︎) om wijzigingen op te slaan.'); return; }
+  const newDate = prompt('Nieuwe datum voor ' + sid + ' (YYYY-MM-DD):', currentDate);
+  if (!newDate) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) { alert('Ongeldige datum — gebruik YYYY-MM-DD (bv. 2026-09-06).'); return; }
+  const target = findWeekAndDay(newDate);
+  if (!target) { alert('Datum ' + newDate + ' valt buiten het seizoen.'); return; }
+  // Maak een draft, verwijder sid uit alle weken, voeg toe op nieuwe positie
+  const draft = JSON.parse(JSON.stringify(activePlan.weekPlans || {}));
+  Object.keys(draft).forEach(wk => {
+    if (!Array.isArray(draft[wk])) return;
+    draft[wk] = draft[wk].map(day => Array.isArray(day) ? day.filter(s => s !== sid) : []);
+  });
+  if (!Array.isArray(draft[target.weekId])) draft[target.weekId] = [[],[],[],[],[],[],[]];
+  while (draft[target.weekId].length < 7) draft[target.weekId].push([]);
+  draft[target.weekId][target.dayIndex].push(sid);
+  const plan = {
+    version: ((activePlan && activePlan.version) || 1) + 1,
+    meta: activePlan.meta,
+    sessions: activePlan.sessions,
+    weekPlans: draft
+  };
+  if (!isValidPlan(plan)) { alert('Ongeldig plan.'); return; }
+  try {
+    const blob = serializePlan(plan, 'user-edited', planContentHash(DEFAULT_PLAN));
+    await gistUpdateFile(cfg.gistId, cfg.token, PLAN_FILE, blob);
+    applyPlan(blob);
+    rerenderAfterPlan();
+  } catch(err) {
+    alert('Opslaan mislukt: ' + (err.message || err));
+  }
 }
 
 // Helper om datum-string te maken (Safari-safe: geen ISO-parsing)
@@ -2003,11 +2043,17 @@ function isValidPlan(p) {
 // (die mag je bewust verwijderen via de sessie-editor).
 function normalizePlanWeeks(plan) {
   if (!plan || !Array.isArray(plan.meta) || !plan.weekPlans) return false;
-  const haveMeta = {};
-  plan.meta.forEach(m => { if (m && m.id) haveMeta[m.id] = true; });
   let changed = false;
+  // Index bestaande meta-entries en synchroniseer start/label met DEFAULT_PLAN
+  // (de week-datums zijn vaste kalenderdata; afwijkingen heelen we hier).
+  const metaById = {};
+  plan.meta.forEach(m => { if (m && m.id) metaById[m.id] = m; });
   DEFAULT_PLAN.meta.forEach(dm => {
-    if (!haveMeta[dm.id]) {
+    const cur = metaById[dm.id];
+    if (cur) {
+      if (cur.start !== dm.start) { cur.start = dm.start; changed = true; }
+      if (cur.label !== dm.label) { cur.label = dm.label; changed = true; }
+    } else {
       plan.meta.push(JSON.parse(JSON.stringify(dm)));
       changed = true;
     }
@@ -2709,7 +2755,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 53;
+const APP_VERSION = 54;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
