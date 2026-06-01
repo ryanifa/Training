@@ -1297,22 +1297,42 @@ const DEFAULT_SESSIONS = {
 // SEIZOEN EVENTS
 // ============================================================
 const EVENTS = [
-  { date:'2026-05-09', name:'Brouwersdam 90 — ¼ triathlon', detail:'Zwem Z2 · Fiets eerste 40km Z2 dan Z3 · Loop Z3 · Noteer T1+T2', tier:'B' },
-  { date:'2026-05-30', name:'De Oversteek — 3 km OWZ', detail:'Volledig Z2 · sighting oefenen · geen race', tier:'B' },
-  { date:'2026-06-13', name:'Oud Gastel — ⅓ triathlon', detail:'Generale 70.3 · alles uitvoeren als racedag · analyseer achteraf', tier:'B' },
-  { date:'2026-06-20', name:'Backyard Ultra Swimrun Amsterdam', detail:'Max 5–6 ronden · Z2/Z3 · plezier', tier:'C' },
-  { date:'2026-06-28', name:'⅓ Triathlon Utrecht', detail:'Trainingsrace · Z2 alle disciplines · geen prestatiedruk', tier:'C' },
-  { date:'2026-07-05', name:'Rotterdam City Swim — 3 km', detail:'Z1/Z2 · activering 6 dagen voor 70.3 · geen race', tier:'C' },
-  { date:'2026-07-11', name:'🏆 70.3 Luxemburg', detail:'Doel: sub 5:15 · Zwem Z2 · Fiets 178–213W · Loop Z3', tier:'A' },
-  { date:'2026-07-18', name:'Rondje Eilanden — swimrun (2 ronden)', detail:'Actief herstel · Z1/Z2 · Vinkeveense Plassen', tier:'C' },
-  { date:'2026-07-25', name:'Rondje Pampus — 3 km OWZ', detail:'Z2 zwemmen · IJsselmeer volume opbouwen', tier:'C' },
-  { date:'2026-08-05', name:'Sprint triathlon Apeldoorn', detail:'Z3/Z4 mag · benen sparen voor Marken dag erna', tier:'C' },
-  { date:'2026-08-06', name:'Marken–Monnickendam — 3 km OWZ', detail:'Z2 · zwemmen op vermoeide benen · IJsselmeer prep', tier:'C' },
-  { date:'2026-08-23', name:'¼ Triathlon Epe', detail:'Z1/Z2 · activering 7 dagen voor IJsselmeer · stop bij ongemak', tier:'C' },
-  { date:'2026-08-30', name:'🏆 IJsselmeer 22 km OWZ', detail:'Eerste 15 km Z2 · laatste 5 km mag Z3 · voeding elke 45 min', tier:'A' },
-  { date:'2026-09-13', name:'🏆 Zwarte Plasje ¼ triathlon', detail:'Z3/Z4 alles geven · Zwem 1000m · Fiets 40km @ 213–249W · Loop 10km @ 4:45/km', tier:'A' },
-  { date:'2026-11-01', name:'🏆 Herfstmarathon', detail:'Doel: sub 3:30 · eerste helft 1:46 · tweede helft 1:44', tier:'A' },
+  { sid:'race_brouwersdam',   date:'2026-05-09', name:'Brouwersdam 90 — ¼ triathlon', detail:'Zwem Z2 · Fiets eerste 40km Z2 dan Z3 · Loop Z3 · Noteer T1+T2', tier:'B' },
+  { sid:'race_oversteek',     date:'2026-05-30', name:'De Oversteek — 3 km OWZ', detail:'Volledig Z2 · sighting oefenen · geen race', tier:'B' },
+  { sid:'race_oud_gastel',    date:'2026-06-13', name:'Oud Gastel — ⅓ triathlon', detail:'Generale 70.3 · alles uitvoeren als racedag · analyseer achteraf', tier:'B' },
+  { sid:'race_swimrun_ams',   date:'2026-06-20', name:'Backyard Ultra Swimrun Amsterdam', detail:'Max 5–6 ronden · Z2/Z3 · plezier', tier:'C' },
+  { sid:'race_utrecht',       date:'2026-06-28', name:'⅓ Triathlon Utrecht', detail:'Trainingsrace · Z2 alle disciplines · geen prestatiedruk', tier:'C' },
+  { sid:'race_city_swim',     date:'2026-07-05', name:'Rotterdam City Swim — 3 km', detail:'Z1/Z2 · activering 6 dagen voor 70.3 · geen race', tier:'C' },
+  { sid:'race_luxemburg',     date:'2026-07-11', name:'🏆 70.3 Luxemburg', detail:'Doel: sub 5:15 · Zwem Z2 · Fiets 178–213W · Loop Z3', tier:'A' },
+  { sid:'race_eilanden',      date:'2026-07-18', name:'Rondje Eilanden — swimrun (2 ronden)', detail:'Actief herstel · Z1/Z2 · Vinkeveense Plassen', tier:'C' },
+  { sid:'race_pampus',        date:'2026-07-25', name:'Rondje Pampus — 3 km OWZ', detail:'Z2 zwemmen · IJsselmeer volume opbouwen', tier:'C' },
+  { sid:'race_apeldoorn',     date:'2026-08-05', name:'Sprint triathlon Apeldoorn', detail:'Z3/Z4 mag · benen sparen voor Marken dag erna', tier:'C' },
+  { sid:'race_marken',        date:'2026-08-06', name:'Marken–Monnickendam — 3 km OWZ', detail:'Z2 · zwemmen op vermoeide benen · IJsselmeer prep', tier:'C' },
+  { sid:'race_epe',           date:'2026-08-23', name:'¼ Triathlon Epe', detail:'Z1/Z2 · activering 7 dagen voor IJsselmeer · stop bij ongemak', tier:'C' },
+  { sid:'race_ijsselmeer',    date:'2026-08-30', name:'🏆 IJsselmeer 22 km OWZ', detail:'Eerste 15 km Z2 · laatste 5 km mag Z3 · voeding elke 45 min', tier:'A' },
+  { sid:'race_zwarte_plasje', date:'2026-09-13', name:'🏆 Zwarte Plasje ¼ triathlon', detail:'Z3/Z4 alles geven · Zwem 1000m · Fiets 40km @ 213–249W · Loop 10km @ 4:45/km', tier:'A' },
+  { sid:'race_marathon',      date:'2026-11-01', name:'🏆 Herfstmarathon', detail:'Doel: sub 3:30 · eerste helft 1:46 · tweede helft 1:44', tier:'A' },
 ];
+
+// Zoekt de huidige datum van een sessie-ID in het actieve plan (weekPlans).
+// Retourneert ISO-datum of null als de sessie nergens in het plan staat.
+function getPlanDateForSession(sid) {
+  if (!sid || !activePlan || !Array.isArray(activePlan.meta)) return null;
+  const wps = activePlan.weekPlans || {};
+  for (const meta of activePlan.meta) {
+    const wp = wps[meta.id];
+    if (!Array.isArray(wp)) continue;
+    for (let di = 0; di < wp.length; di++) {
+      if (Array.isArray(wp[di]) && wp[di].indexOf(sid) >= 0) {
+        const d = parseDate(meta.start);
+        if (!d || isNaN(d)) return null;
+        d.setDate(d.getDate() + di);
+        return formatIso(d);
+      }
+    }
+  }
+  return null;
+}
 
 function formatEventDate(iso) {
   const d = parseDate(iso);
@@ -1345,8 +1365,9 @@ function renderSeason() {
   const past = [];
 
   EVENTS.forEach(e => {
-    const daysUntil = getDaysUntil(e.date);
-    const item = Object.assign({}, e, { daysUntil: daysUntil });
+    const effectiveDate = (e.sid && getPlanDateForSession(e.sid)) || e.date;
+    const daysUntil = getDaysUntil(effectiveDate);
+    const item = Object.assign({}, e, { date: effectiveDate, daysUntil: daysUntil });
     if (daysUntil >= 0) upcoming.push(item);
     else past.push(item);
   });
@@ -2680,7 +2701,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 51;
+const APP_VERSION = 52;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -2693,24 +2714,22 @@ function fixVersionFooter() {
 }
 
 function updateNextRaceSub() {
-  const races = [
-    { date: '2026-05-30', name: 'De Oversteek' },
-    { date: '2026-06-13', name: 'Oud Gastel' },
-    { date: '2026-06-20', name: 'Swimrun A\'dam' },
-    { date: '2026-06-28', name: 'Utrecht ⅓' },
-    { date: '2026-07-05', name: 'Rotterdam City Swim' },
-    { date: '2026-07-11', name: '70.3 Luxemburg' },
-    { date: '2026-07-18', name: 'Rondje Eilanden' },
-    { date: '2026-07-25', name: 'Rondje Pampus' },
-    { date: '2026-08-05', name: 'Sprint Apeldoorn' },
-    { date: '2026-08-06', name: 'Marken' },
-    { date: '2026-08-23', name: '¼ Triathlon Epe' },
-    { date: '2026-08-30', name: 'IJsselmeer' },
-    { date: '2026-09-13', name: 'Zwarte Plasje' },
-    { date: '2026-11-01', name: 'Marathon' },
-  ];
+  // Korte namen voor de header (de lange in EVENTS zijn te breed)
+  const SHORT = {
+    race_oversteek: 'De Oversteek', race_oud_gastel: 'Oud Gastel',
+    race_swimrun_ams: 'Swimrun A\'dam', race_utrecht: 'Utrecht ⅓',
+    race_city_swim: 'Rotterdam City Swim', race_luxemburg: '70.3 Luxemburg',
+    race_eilanden: 'Rondje Eilanden', race_pampus: 'Rondje Pampus',
+    race_apeldoorn: 'Sprint Apeldoorn', race_marken: 'Marken',
+    race_epe: '¼ Triathlon Epe', race_ijsselmeer: 'IJsselmeer',
+    race_zwarte_plasje: 'Zwarte Plasje', race_marathon: 'Marathon'
+  };
   const today = new Date(); today.setHours(0,0,0,0);
-  const next = races.find(r => new Date(r.date) >= today);
+  const dated = EVENTS
+    .map(e => ({ date: (e.sid && getPlanDateForSession(e.sid)) || e.date, name: SHORT[e.sid] || e.name }))
+    .filter(r => new Date(r.date) >= today)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  const next = dated[0];
   const el = document.getElementById('subShort');
   if (!el) return;
   if (!next) { el.textContent = 'Seizoen 2026'; return; }
