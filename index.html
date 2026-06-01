@@ -1410,7 +1410,9 @@ function renderEventCard(e, isPast) {
   const countdownHtml = !isPast
     ? '<div style="font-size:11px;color:#888;margin-top:2px">' + formatCountdown(e.daysUntil) + '</div>'
     : '<div style="font-size:11px;color:#0F6E56;margin-top:2px">✅ voltooid</div>';
-  const canMove = !isPast && e.sid && getPlanDateForSession(e.sid);
+  // Verzet-knop verschijnt voor elke aanstaande race met een sid, ook als
+  // 'ie momenteel niet in het plan staat (dan wordt 'ie nieuw geplaatst).
+  const canMove = !isPast && !!e.sid;
   const moveBtn = canMove
     ? '<button class="modal-btn" style="font-size:11px;padding:3px 8px;margin-top:4px" onclick="promptMoveRace(\'' + e.sid + '\',\'' + e.date + '\')">📅 Verzet</button>'
     : '';
@@ -2755,7 +2757,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 54;
+const APP_VERSION = 55;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
