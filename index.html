@@ -1365,9 +1365,10 @@ function renderSeason() {
   const past = [];
 
   EVENTS.forEach(e => {
-    const effectiveDate = (e.sid && getPlanDateForSession(e.sid)) || e.date;
+    const planDate = e.sid ? getPlanDateForSession(e.sid) : null;
+    const effectiveDate = planDate || e.date;
     const daysUntil = getDaysUntil(effectiveDate);
-    const item = Object.assign({}, e, { date: effectiveDate, daysUntil: daysUntil });
+    const item = Object.assign({}, e, { date: effectiveDate, daysUntil: daysUntil, inPlan: !!planDate });
     if (daysUntil >= 0) upcoming.push(item);
     else past.push(item);
   });
@@ -1406,19 +1407,23 @@ function renderEventCard(e, isPast) {
   const borderClass = 'border-' + tierLetter;
   const badgeClass = 'badge-' + tierLetter;
   const extraStyle = e.tier === 'A' ? 'border-width:3px;' : '';
-  const pastStyle = isPast ? 'opacity:0.55;' : '';
-  const countdownHtml = !isPast
-    ? '<div style="font-size:11px;color:#888;margin-top:2px">' + formatCountdown(e.daysUntil) + '</div>'
-    : '<div style="font-size:11px;color:#0F6E56;margin-top:2px">✅ voltooid</div>';
+  const notInPlan = !isPast && e.inPlan === false;
+  const dimStyle = isPast ? 'opacity:0.55;' : (notInPlan ? 'opacity:0.55;background:#f9f9f9;' : '');
+  const dateStyle = notInPlan ? 'text-decoration:line-through;color:#999' : '';
+  const countdownHtml = isPast
+    ? '<div style="font-size:11px;color:#0F6E56;margin-top:2px">✅ voltooid</div>'
+    : (notInPlan
+        ? '<div style="font-size:11px;color:#d32f2f;margin-top:2px;font-weight:bold">niet in plan</div>'
+        : '<div style="font-size:11px;color:#888;margin-top:2px">' + formatCountdown(e.daysUntil) + '</div>');
   // Verzet-knop verschijnt voor elke aanstaande race met een sid, ook als
   // 'ie momenteel niet in het plan staat (dan wordt 'ie nieuw geplaatst).
   const canMove = !isPast && !!e.sid;
   const moveBtn = canMove
-    ? '<button class="modal-btn" style="font-size:11px;padding:3px 8px;margin-top:4px" onclick="promptMoveRace(\'' + e.sid + '\',\'' + e.date + '\')">📅 Verzet</button>'
+    ? '<button class="modal-btn" style="font-size:11px;padding:3px 8px;margin-top:4px" onclick="promptMoveRace(\'' + e.sid + '\',\'' + e.date + '\')">' + (notInPlan ? '↩ Terugzetten' : '📅 Verzet') + '</button>'
     : '';
-  return '<div class="event-card ' + borderClass + '" style="' + extraStyle + pastStyle + '">' +
+  return '<div class="event-card ' + borderClass + '" style="' + extraStyle + dimStyle + '">' +
     '<div>' +
-      '<div class="event-date">' + formatEventDate(e.date) + '</div>' +
+      '<div class="event-date" style="' + dateStyle + '">' + formatEventDate(e.date) + '</div>' +
       countdownHtml + moveBtn +
     '</div>' +
     '<div style="flex:1;margin:0 10px">' +
@@ -2757,7 +2762,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 55;
+const APP_VERSION = 56;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
