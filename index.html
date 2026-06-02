@@ -157,6 +157,8 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 .p-str  { background: #EEEDFE; border-color: #7F77DD; color: #534AB7; }
 .p-event{ background: #FAC775; border-color: #BA7517; color: #633806; }
 .p-race { background: #FAECE7; border-color: #D85A30; color: #993C1D; font-weight: bold; }
+.p-mobility { background: #F0F9E8; border-color: #689F38; color: #33691E; }
+.p-recovery { background: #E0F7FA; border-color: #0097A7; color: #006064; }
 .p-rest { background: #F1EFE8; border-color: #B4B2A9; color: #5F5E5A; }
 
 /* Detail panel */
@@ -2459,7 +2461,7 @@ let weekEditorDraft = null;  // diepe kopie van activePlan.weekPlans
 let weekEditorWeek = null;
 
 function buildPlanSessionOptions() {
-  const groups = { run: '🏃 Lopen', bike: '🚴 Fietsen', swim: '🏊 Zwemmen', str: '💪 Kracht', event: '📅 Event', race: '🏁 Race' };
+  const groups = { run: '🏃 Lopen', bike: '🚴 Fietsen', swim: '🏊 Zwemmen', str: '💪 Kracht', mobility: '🧘 Mobiliteit/stretch', recovery: '🧊 Herstel', event: '📅 Event', race: '🏁 Race' };
   const known = Object.keys(groups);
   let html = '<option value="">+ sessie toevoegen…</option>';
   known.forEach(type => {
@@ -2581,7 +2583,7 @@ async function saveWeekEditor() {
 // ============================================================
 let sessionEditorDraft = null;  // diepe kopie van activePlan.sessions
 let sessionEditorId = null;
-const SESSION_TYPES = ['run', 'bike', 'swim', 'str', 'event', 'race'];
+const SESSION_TYPES = ['run', 'bike', 'swim', 'str', 'mobility', 'recovery', 'event', 'race'];
 const SESSION_ZONES = ['sz1', 'sz2', 'sz3', 'sz4', 'sz5'];
 
 function setSessionEditorMsg(msg, type) {
@@ -2762,7 +2764,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 57;
+const APP_VERSION = 58;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3121,6 +3123,8 @@ function renderPatchCard(patch, idx, m) {
     '<div class="coach-patch-detail">' + lines + '</div>' + status + '</div>';
 }
 
+const VALID_SID_RE = /^[a-z0-9_]+$/;
+
 function buildPlanFromPatch(patch) {
   const plan = {
     version: ((activePlan && activePlan.version) || 1) + 1,
@@ -3130,6 +3134,9 @@ function buildPlanFromPatch(patch) {
   };
   (patch.changes || []).forEach(ch => {
     if (ch.type === 'session' && ch.sessionId && ch.session) {
+      // Nieuwe of bestaande sessionId — beide toegestaan. Validatie van het
+      // ID-formaat gebeurt in validateBuiltPlan zodat onveilige sleutels niet
+      // stiekem door de coach in het plan terechtkomen.
       plan.sessions[ch.sessionId] = ch.session;
     } else if (ch.type === 'weekPlan' && ch.weekId && ch.days) {
       let wk = plan.weekPlans[ch.weekId];
@@ -3149,6 +3156,9 @@ function validateBuiltPlan(plan) {
   const metaIds = {};
   (plan.meta || []).forEach(m => { metaIds[m.id] = true; });
   const errors = [];
+  Object.keys(plan.sessions || {}).forEach(sid => {
+    if (!VALID_SID_RE.test(sid)) errors.push('ongeldige sessionId "' + sid + '" (alleen a-z, 0-9, _)');
+  });
   Object.keys(plan.weekPlans || {}).forEach(wk => {
     if (!metaIds[wk]) errors.push('onbekende week: ' + wk);
     (plan.weekPlans[wk] || []).forEach((day, di) => {
@@ -3267,10 +3277,16 @@ Als — en alléén als — de gebruiker vraagt om het plan, schema of een sessi
 \`\`\`
 Elke change in "changes" is één van:
 - Weekschema (welke sessies op welke dag): { "type": "weekPlan", "weekId": "w6", "days": { "5": ["bike_long"], "6": ["swim_tech","swim_ow_long"] } }. dayIndex 0=ma..6=zo; alleen de genoemde dagen veranderen; gebruik [] voor rust.
-- Sessie-inhoud (de bibliotheek, geldt voor alle weken die de sessie gebruiken): { "type": "session", "sessionId": "bike_z3", "session": { "type":"bike", "label":"Fiets Z3", "dur":"±1u 30 min", "title":"Fietsen — zone 3", "steps":[{"sess":"","items":[{"z":"sz2","n":"Warming-up","d":"10 min","m":"<130W · HR <120","note":""}]}] } }
-Regels: gebruik alléén bestaande sessionId's, of voeg eerst een nieuwe sessie toe via een 'session'-change voordat je 'm in een weekPlan zet. Geef nooit ongevraagd een plan-patch. De gebruiker keurt de wijziging in de app goed; jij past niets zelf toe.
+- Sessie-inhoud (de bibliotheek, geldt voor alle weken die de sessie gebruiken): { "type": "session", "sessionId": "bike_z3", "session": { "type":"bike", "label":"Fiets Z3", "dur":"±1u 30 min", "title":"Fietsen — zone 3", "source":"(optioneel: programma-bron, bv. 'Dynamic Triathlete M1D4')", "steps":[{"sess":"","items":[{"z":"sz2","n":"Warming-up","d":"10 min","m":"<130W · HR <120","note":""}]}] } }
 
-Voor hernoemen van een race of training (bv. "Herfstmarathon" naar "Marathon Den Haag"): gebruik een 'session'-change met dezelfde sessionId waarin je label en title (en eventueel detail-velden) aanpast. Het seizoen-overzicht en de week-pillen pakken het label automatisch op. Voor verwijderen van een race uit het seizoen: gebruik een 'weekPlan'-change die de race uit z'n dag-array haalt (alleen die dag aanpassen, niet de hele week). De race verdwijnt dan uit het schema (wordt in het seizoen-overzicht gemarkeerd als "niet in plan", her-plaatsbaar via de Verzet-knop).`;
+Regels:
+- Nieuwe sessionId's aanmaken is toegestaan via een 'session'-change; gebruik 'm daarna direct in een weekPlan-change in dezelfde patch. sessionId mag alleen a-z, 0-9 en _ bevatten (bv. mobility_hip_opener).
+- Geldige type-waarden: swim, bike, run, str (kracht), mobility (stretch/mobiliteit), recovery (actief herstel), event, race.
+- Het optionele veld "source" in een sessie verwijst naar het bronprogramma (bv. een Dynamic Triathlete dag) en wordt onder de titel getoond.
+- Mobility- en recovery-sessies zijn ondersteunende achtergrond-trainingen; tel ze NIET mee in trainingsbelasting-, TSS- of intensiteitsanalyses. Garmin-push is voor die types uitgeschakeld in de app.
+- Hernoemen van een race/training: 'session'-change met dezelfde sessionId waarin je label en title aanpast — het seizoen-overzicht en week-pillen pakken het automatisch op.
+- Verwijderen van een race uit het seizoen: 'weekPlan'-change die de race uit z'n dag-array haalt (alleen die dag aanpassen). De race verdwijnt uit het schema en wordt in het seizoen-overzicht gemarkeerd als "niet in plan" (her-plaatsbaar via de Verzet-knop).
+- Geef nooit ongevraagd een plan-patch. De gebruiker keurt elke wijziging in de app goed; jij past niets zelf toe.`;
 
   const dynamicBlock = `Vandaag is ${today}.
 
@@ -3726,9 +3742,18 @@ function buildSessionDetailHTML(weekId, di, sid) {
       ${escapeHtml(fbEntry.text)}
     </div>` : '';
 
+  const sourceHtml = sess.source
+    ? `<div style="font-size:11px;color:#7F77DD;margin-bottom:8px">📚 ${escapeHtml(sess.source)}</div>`
+    : '';
+  const garminEligible = ['run', 'bike', 'swim'].indexOf(sess.type) >= 0;
+  const garminBtn = garminEligible
+    ? `<button class="mark-done-btn" onclick="openWorkout('${sid}',${di})" style="background:#FAEEDA;border-color:#EF9F27;color:#854F0B">🏃 Garmin workout</button>`
+    : '';
+
   return `
     <div class="detail-title">${sess.title}</div>
     <div class="detail-sub">${day.name} ${day.date} · ${displayDur}${displayDur !== sess.dur ? ' <span style="color:#7F77DD;font-size:11px">(werkelijk · plan: ' + sess.dur + ')</span>' : ''}</div>
+    ${sourceHtml}
     ${metricsHtml}
     ${fbHtml}
     ${stepsHtml}
@@ -3744,9 +3769,7 @@ function buildSessionDetailHTML(weekId, di, sid) {
     <button class="feedback-btn${hasFb ? ' has-feedback' : ''}" onclick="openFeedback('${sid}',${di})">
       📝 ${hasFb ? 'Bewerk feedback' : 'Feedback toevoegen'}
     </button>
-    <button class="mark-done-btn" onclick="openWorkout('${sid}',${di})" style="background:#FAEEDA;border-color:#EF9F27;color:#854F0B">
-      🏃 Garmin workout
-    </button>`;
+    ${garminBtn}`;
 }
 
 function renderToday() {
