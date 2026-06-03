@@ -2774,7 +2774,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 62;
+const APP_VERSION = 63;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3169,6 +3169,26 @@ function buildPlanFromPatch(patch) {
       });
       plan.weekPlans[ch.weekId] = wk;
     }
+  });
+
+  // Auto-placeholder: maakt missende sessies aan waarnaar de coach in een
+  // weekPlan verwijst maar die hij vergat te creëren. Voorkomt dat het hele
+  // patch wordt geweigerd door één missende sessie; de placeholder is
+  // duidelijk gelabeld en kan handmatig worden gevuld of verwijderd.
+  Object.keys(plan.weekPlans || {}).forEach(wk => {
+    (plan.weekPlans[wk] || []).forEach(day => {
+      (day || []).forEach(sid => {
+        if (!plan.sessions[sid] && VALID_SID_RE.test(sid)) {
+          plan.sessions[sid] = {
+            type: 'mobility',
+            label: '🚧 ' + sid + ' (placeholder)',
+            dur: '?',
+            title: 'Placeholder — vul aan via de sessie-editor',
+            steps: [{ sess: '', items: [] }]
+          };
+        }
+      });
+    });
   });
   return plan;
 }
