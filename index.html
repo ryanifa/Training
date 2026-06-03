@@ -1986,7 +1986,11 @@ async function gistUpdate(gistId, token, blob) {
     headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ files: { [SYNC_FILE]: { content: JSON.stringify(blob) } } })
   });
-  if (!r.ok) throw new Error('Gist updaten mislukt (HTTP ' + r.status + ')');
+  if (!r.ok) {
+    let detail = '';
+    try { const body = await r.json(); if (body && body.message) detail = ' — ' + body.message; } catch(_) {}
+    throw new Error('Gist updaten mislukt (HTTP ' + r.status + detail + ')');
+  }
 }
 
 async function gistCreate(token, blob) {
@@ -2019,7 +2023,11 @@ async function gistUpdateFile(gistId, token, filename, contentObj) {
     headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ files: { [filename]: { content: JSON.stringify(contentObj) } } })
   });
-  if (!r.ok) throw new Error('Gist-bestand updaten mislukt (HTTP ' + r.status + ')');
+  if (!r.ok) {
+    let detail = '';
+    try { const body = await r.json(); if (body && body.message) detail = ' — ' + body.message; } catch(_) {}
+    throw new Error('Gist-bestand updaten mislukt (HTTP ' + r.status + detail + ')');
+  }
 }
 
 // ---- Plan-sync (trainingPlan.json) ----
@@ -2774,7 +2782,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 64;
+const APP_VERSION = 65;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
