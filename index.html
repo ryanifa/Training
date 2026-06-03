@@ -2774,7 +2774,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 63;
+const APP_VERSION = 64;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3091,6 +3091,11 @@ function renderCoachMessages() {
       const ex = extractPlanPatch(m.content);
       let html = '<div class="coach-msg ' + cls + '">' + escapeHtml(ex.text || m.content) + '</div>';
       if (ex.patch) html += renderPatchCard(ex.patch, idx, m);
+      else if (ex.truncated) {
+        html += '<div class="coach-patch" style="border-color:#EF9F27;background:#FAEEDA"><div class="coach-patch-title" style="color:#854F0B">⚠️ Afgekapt antwoord</div><div class="coach-patch-sum" style="color:#854F0B">De ```plan-patch``` is geopend maar niet afgesloten — meestal token-limiet. Vraag de coach: "Splits de patch in kleinere delen (max 2 sessies per patch)" of "Geef alleen de weekPlan-changes zonder volledige session-definities (alleen sids waar al definities voor zijn)".</div></div>';
+      } else if (ex.parseError) {
+        html += '<div class="coach-patch" style="border-color:#EF9F27;background:#FAEEDA"><div class="coach-patch-title" style="color:#854F0B">⚠️ JSON-fout in plan-patch</div><div class="coach-patch-sum" style="color:#854F0B">Het ```plan-patch``` blok is afgesloten maar bevat ongeldige JSON. Vraag de coach het opnieuw te genereren, evt. in een kleinere patch.</div></div>';
+      }
       return html;
     }
     return '<div class="coach-msg ' + cls + '">' + escapeHtml(m.content) + '</div>';
@@ -3103,11 +3108,18 @@ function extractPlanPatch(text) {
   if (!text) return { patch: null, text: text };
   const re = /```plan-patch\s*([\s\S]*?)```/i;
   const m = text.match(re);
-  if (!m) return { patch: null, text: text };
-  let patch = null;
-  try { patch = JSON.parse(m[1].trim()); } catch(_) { return { patch: null, text: text }; }
-  if (!patch || !Array.isArray(patch.changes)) return { patch: null, text: text };
-  return { patch: patch, text: text.replace(re, '').trim() };
+  if (m) {
+    let patch = null;
+    try { patch = JSON.parse(m[1].trim()); } catch(_) { return { patch: null, text: text, parseError: true }; }
+    if (!patch || !Array.isArray(patch.changes)) return { patch: null, text: text };
+    return { patch: patch, text: text.replace(re, '').trim() };
+  }
+  // Geen gesloten blok — check of er een geopend ```plan-patch was zonder
+  // afsluiting (typisch teken van afgekapt antwoord door token-limiet).
+  if (/```plan-patch\s/i.test(text)) {
+    return { patch: null, text: text, truncated: true };
+  }
+  return { patch: null, text: text };
 }
 
 function renderPatchCard(patch, idx, m) {
@@ -3367,7 +3379,8 @@ Regels:
 - Mobility- en recovery-sessies zijn ondersteunende achtergrond-trainingen; tel ze NIET mee in trainingsbelasting-, TSS- of intensiteitsanalyses. Garmin-push is voor die types uitgeschakeld in de app.
 - Hernoemen van een race/training: 'session'-change met dezelfde sessionId waarin je label en title aanpast — het seizoen-overzicht en week-pillen pakken het automatisch op.
 - Verwijderen van een race uit het seizoen: 'weekPlan'-change die de race uit z'n dag-array haalt (alleen die dag aanpassen). De race verdwijnt uit het schema en wordt in het seizoen-overzicht gemarkeerd als "niet in plan" (her-plaatsbaar via de Verzet-knop).
-- Geef nooit ongevraagd een plan-patch. De gebruiker keurt elke wijziging in de app goed; jij past niets zelf toe.`;
+- Geef nooit ongevraagd een plan-patch. De gebruiker keurt elke wijziging in de app goed; jij past niets zelf toe.
+- HOUD PATCHES KLEIN. Het antwoord wordt afgekapt rond ~8000 tokens. Vuistregels: max 3 nieuwe volledige session-definities per patch (incl. alle stappen). Als je meer sessies tegelijk wilt inplannen, splits dan: eerste patch definieert de sessies, tweede patch alleen weekPlan-changes die ernaar verwijzen (zonder de session-objecten te herhalen). Een weekPlan-change die naar een bestaande sid verwijst kost nauwelijks tokens.`;
 
   const dynamicBlock = `Vandaag is ${today}.
 
@@ -3431,7 +3444,7 @@ async function sendCoachMessage() {
       },
       body: JSON.stringify({
         model: cfg.model || DEFAULT_COACH_MODEL,
-        max_tokens: 2048,
+        max_tokens: 8192,
         system: systemBlocks,
         messages: apiMessages
       })
