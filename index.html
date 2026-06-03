@@ -2468,15 +2468,20 @@ let weekEditorWeek = null;
 function buildPlanSessionOptions() {
   const groups = { run: '🏃 Lopen', bike: '🚴 Fietsen', swim: '🏊 Zwemmen', str: '💪 Kracht', mobility: '🧘 Mobiliteit/stretch', recovery: '🧊 Herstel', event: '📅 Event', race: '🏁 Race' };
   const known = Object.keys(groups);
+  // Sorteer per groep alfabetisch op label (case-insensitief, NL-locale).
+  const collator = new Intl.Collator('nl', { sensitivity: 'base' });
+  const sortByLabel = (a, b) => collator.compare(
+    (SESSIONS[a].label || a), (SESSIONS[b].label || b)
+  );
   let html = '<option value="">+ sessie toevoegen…</option>';
   known.forEach(type => {
-    const ids = Object.keys(SESSIONS).filter(sid => SESSIONS[sid].type === type);
+    const ids = Object.keys(SESSIONS).filter(sid => SESSIONS[sid].type === type).sort(sortByLabel);
     if (!ids.length) return;
     html += '<optgroup label="' + groups[type] + '">';
     ids.forEach(sid => { html += '<option value="' + sid + '">' + escapeHtml(SESSIONS[sid].label) + ' (' + sid + ')</option>'; });
     html += '</optgroup>';
   });
-  const others = Object.keys(SESSIONS).filter(sid => known.indexOf(SESSIONS[sid].type) < 0);
+  const others = Object.keys(SESSIONS).filter(sid => known.indexOf(SESSIONS[sid].type) < 0).sort(sortByLabel);
   if (others.length) {
     html += '<optgroup label="Overig">';
     others.forEach(sid => { html += '<option value="' + sid + '">' + escapeHtml(SESSIONS[sid].label) + ' (' + sid + ')</option>'; });
@@ -2769,7 +2774,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 60;
+const APP_VERSION = 61;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
