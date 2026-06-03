@@ -2624,11 +2624,36 @@ function closeSessionEditor() { document.getElementById('sessionEditorModal').cl
 function onSessionEditorBgClick(ev) { if (ev.target.id === 'sessionEditorModal') closeSessionEditor(); }
 
 function sessEditPickerOptions() {
-  return Object.keys(sessionEditorDraft).sort().map(id => {
+  // Groepeer op type in de bekende volgorde, daarbinnen alfabetisch op label.
+  const typeOrder = { run: 1, bike: 2, swim: 3, str: 4, mobility: 5, recovery: 6, event: 7, race: 8 };
+  const typeLabel = { run: '🏃 Lopen', bike: '🚴 Fietsen', swim: '🏊 Zwemmen', str: '💪 Kracht', mobility: '🧘 Mobiliteit/stretch', recovery: '🧊 Herstel', event: '📅 Event', race: '🏁 Race' };
+  const collator = new Intl.Collator('nl', { sensitivity: 'base' });
+  const ids = Object.keys(sessionEditorDraft);
+  // Sorteer eerst op type-volgorde, dan op label (case-insensitief), dan op id
+  ids.sort((a, b) => {
+    const sa = sessionEditorDraft[a], sb = sessionEditorDraft[b];
+    const ta = typeOrder[sa.type] || 99;
+    const tb = typeOrder[sb.type] || 99;
+    if (ta !== tb) return ta - tb;
+    const cmpLabel = collator.compare(sa.label || a, sb.label || b);
+    if (cmpLabel) return cmpLabel;
+    return collator.compare(a, b);
+  });
+  let html = '';
+  let lastType = null;
+  ids.forEach(id => {
     const s = sessionEditorDraft[id];
-    return '<option value="' + id + '"' + (id === sessionEditorId ? ' selected' : '') + '>' +
+    const t = s.type || 'overig';
+    if (t !== lastType) {
+      if (lastType !== null) html += '</optgroup>';
+      html += '<optgroup label="' + (typeLabel[t] || ('Overig: ' + t)) + '">';
+      lastType = t;
+    }
+    html += '<option value="' + id + '"' + (id === sessionEditorId ? ' selected' : '') + '>' +
       escapeHtml((s.label || id) + ' (' + id + ')') + '</option>';
-  }).join('');
+  });
+  if (lastType !== null) html += '</optgroup>';
+  return html;
 }
 function sessEditSelect(id) { sessionEditorId = id; renderSessionEditor(); }
 
@@ -2782,7 +2807,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 65;
+const APP_VERSION = 66;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
