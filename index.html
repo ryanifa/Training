@@ -181,7 +181,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 .step-name { font-size: 13px; font-weight: bold; }
 .step-dur { font-size: 12px; color: #888; }
 .step-metric { font-size: 12px; font-weight: bold; margin: 2px 0; }
-.step-note { font-size: 11px; color: #666; }
+.step-note { font-size: 11px; color: #666; white-space: pre-wrap; word-break: break-word; }
 .sess-lbl { font-size: 11px; font-weight: bold; color: #888; text-transform: uppercase; letter-spacing: .05em; margin: 10px 0 5px; }
 .divider-line { height: 1px; background: #eee; margin: 8px 0; }
 .sz1{background:#F1EFE8}.sz1 .step-name{color:#2C2C2A}.sz1 .step-metric{color:#5F5E5A}
@@ -2080,6 +2080,11 @@ function normalizePlanWeeks(plan) {
       return oa - ob;
     });
   }
+  // Heal sessie-items met lange sleutels (zone/naam/duur/doel) naar de
+  // korte vorm (z/n/d/m) die de renderer en alle andere consumers
+  // verwachten. Dit voorkomt onzichtbare velden in mobility-sessies van
+  // de coach.
+  if (normalizeAllSessions(plan)) changed = true;
   return changed;
 }
 
@@ -2764,7 +2769,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 58;
+const APP_VERSION = 59;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3137,7 +3142,7 @@ function buildPlanFromPatch(patch) {
       // Nieuwe of bestaande sessionId — beide toegestaan. Validatie van het
       // ID-formaat gebeurt in validateBuiltPlan zodat onveilige sleutels niet
       // stiekem door de coach in het plan terechtkomen.
-      plan.sessions[ch.sessionId] = ch.session;
+      plan.sessions[ch.sessionId] = normalizeSession(JSON.parse(JSON.stringify(ch.session)));
     } else if (ch.type === 'weekPlan' && ch.weekId && ch.days) {
       let wk = plan.weekPlans[ch.weekId];
       if (!Array.isArray(wk)) wk = [[], [], [], [], [], [], []];
@@ -3211,8 +3216,11 @@ function buildPlanContext() {
       label: s.label,
       dur: s.dur,
       title: s.title,
+      source: s.source,
+      // Items met dezelfde korte sleutels die je in de patch óók gebruikt:
+      // z=zone, n=naam, d=duur, m=doel/target, note=extra notitie.
       steps: (s.steps || []).reduce((acc, g) => acc.concat(
-        (g.items || []).map(it => ({ zone: it.z, naam: it.n, duur: it.d, doel: it.m, note: it.note || '' }))
+        (g.items || []).map(it => ({ z: it.z, n: it.n, d: it.d, m: it.m, note: it.note || '' }))
       ), [])
     };
   });
@@ -3226,6 +3234,43 @@ function buildPlanContext() {
     schema[meta.id] = { label: meta.label, start: meta.start, dagen: dagen };
   });
   return { sessions: sessions, schema: schema };
+}
+
+// Maakt sessie-items robuust voor zowel korte (z/n/d/m) als lange
+// (zone/naam/duur/doel) sleutels — een LLM gebruikt soms de variant uit
+// de context. Behoudt alle eigen velden en geeft een minimale verstandige
+// fallback voor ontbrekende waarden.
+function normalizeSessionItem(it) {
+  if (!it || typeof it !== 'object') return { z: 'sz2', n: '', d: '', m: '', note: '' };
+  return {
+    z: it.z || it.zone || 'sz2',
+    n: it.n || it.naam || it.name || '',
+    d: it.d || it.duur || it.duration || '',
+    m: it.m || it.doel || it.target || it.metric || '',
+    note: it.note != null ? it.note : (it.notes || '')
+  };
+}
+function normalizeSession(s) {
+  if (!s || typeof s !== 'object') return s;
+  if (Array.isArray(s.steps)) {
+    s.steps = s.steps.map(g => ({
+      sess: g && g.sess ? g.sess : '',
+      items: Array.isArray(g && g.items) ? g.items.map(normalizeSessionItem) : []
+    }));
+  }
+  return s;
+}
+function normalizeAllSessions(plan) {
+  if (!plan || !plan.sessions) return false;
+  let changed = false;
+  Object.keys(plan.sessions).forEach(sid => {
+    const s = plan.sessions[sid];
+    if (!s || !Array.isArray(s.steps)) return;
+    const before = JSON.stringify(s.steps);
+    normalizeSession(s);
+    if (JSON.stringify(s.steps) !== before) changed = true;
+  });
+  return changed;
 }
 
 function buildCoachSystemPrompt() {
@@ -3722,12 +3767,24 @@ function buildSessionDetailHTML(weekId, di, sid) {
   const isMissed = state.missed[weekId + ':' + di + ':' + sid] === true;
 
   const stepsHtml = sess.steps.map(group => {
-    const itemsHtml = group.items.map(item => `
+    const itemsHtml = group.items.map(raw => {
+      // Defensieve fallback: zowel korte (z/n/d/m) als lange
+      // (zone/naam/duur/doel) sleutels accepteren, zodat een nog
+      // niet-genormaliseerde sessie geen lege velden toont.
+      const item = {
+        z: raw.z || raw.zone || 'sz2',
+        n: raw.n || raw.naam || raw.name || '',
+        d: raw.d || raw.duur || raw.duration || '',
+        m: raw.m || raw.doel || raw.target || raw.metric || '',
+        note: raw.note != null ? raw.note : (raw.notes || '')
+      };
+      return `
       <div class="step ${item.z}">
-        <div class="step-row"><span class="step-name">${item.n}</span><span class="step-dur">${item.d}</span></div>
-        <div class="step-metric">${item.m}</div>
-        ${item.note ? `<div class="step-note">${item.note}</div>` : ''}
-      </div>`).join('');
+        <div class="step-row"><span class="step-name">${escapeHtml(item.n)}</span><span class="step-dur">${escapeHtml(item.d)}</span></div>
+        <div class="step-metric">${escapeHtml(item.m)}</div>
+        ${item.note ? `<div class="step-note">${escapeHtml(item.note)}</div>` : ''}
+      </div>`;
+    }).join('');
     return (group.sess ? `<div class="sess-lbl">${group.sess}</div>` : '') + itemsHtml;
   }).join('<div class="divider-line"></div>');
 
