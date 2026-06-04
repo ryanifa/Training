@@ -2807,7 +2807,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 66;
+const APP_VERSION = 67;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -4735,7 +4735,13 @@ function fitToItem(parsed) {
     if (!isNaN(d)) isoDate = d.toISOString().slice(0, 10);
   }
 
-  const sportMap = { running: 'run', cycling: 'bike', swimming: 'swim' };
+  const sportMap = {
+    running: 'run', trail_running: 'run', treadmill_running: 'run',
+    cycling: 'bike', road_biking: 'bike', mountain_biking: 'bike',
+    gravel_cycling: 'bike', indoor_cycling: 'bike', cyclocross: 'bike',
+    swimming: 'swim', lap_swimming: 'swim', open_water_swimming: 'swim',
+    fitness_equipment: 'str', strength_training: 'str', weight_training: 'str'
+  };
   const appType = sportMap[sport] || null;
 
   // Metrics
@@ -4768,17 +4774,26 @@ function fitToItem(parsed) {
     }
   }
 
-  // Auto-detect sessie_type: bekijk geplande sessies van die dag van dezelfde sport
+  // Auto-detect sessie_type: bekijk de EFFECTIEVE sessies op die dag (incl.
+  // verplaatsingen via state.moves), niet alleen het kale plan. Eerst proberen
+  // we een sport-match (run/bike/swim/str). Lukt dat niet maar staat er
+  // wél iets gepland, pak de eerste als voorstel — gebruiker kan altijd
+  // wijzigen via de dropdown.
   let sessieType = null;
   let autoMatched = false;
-  if (isoDate && appType) {
+  if (isoDate) {
     const wd = findWeekAndDay(isoDate);
     if (wd) {
-      const w = WEEKS[wd.weekId];
+      const w = getWeekView(wd.weekId);
       const day = w && w.days[wd.dayIndex];
-      if (day) {
-        const matches = day.sessions.filter(sid => SESSIONS[sid] && SESSIONS[sid].type === appType);
-        if (matches.length >= 1) { sessieType = matches[0]; autoMatched = true; }
+      const sessions = (day && day.sessions) || [];
+      if (appType) {
+        const sportMatch = sessions.filter(sid => SESSIONS[sid] && SESSIONS[sid].type === appType);
+        if (sportMatch.length >= 1) { sessieType = sportMatch[0]; autoMatched = true; }
+      }
+      if (!sessieType && sessions.length > 0) {
+        const first = sessions.find(sid => SESSIONS[sid]);
+        if (first) { sessieType = first; autoMatched = true; }
       }
     }
   }
