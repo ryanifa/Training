@@ -314,8 +314,13 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 .coach-patch-sum { margin-bottom: 6px; }
 .coach-patch-detail { font-size: 12px; color: #555; background: #f6faf8; border-radius: 6px; padding: 6px 8px; white-space: normal; }
 .coach-patch-status { font-weight: bold; font-size: 12px; margin-top: 6px; }
-.coach-input-row { display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid #eee; flex-shrink: 0; }
+.coach-input-row { display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid #eee; flex-shrink: 0; align-items: flex-end; }
 .coach-input-row textarea { flex: 1; border: 1px solid #ddd; border-radius: 8px; padding: 8px 10px; font-family: inherit; font-size: 13px; resize: none; }
+.coach-attach-bar { display: flex; gap: 6px; padding: 8px 14px 0; flex-wrap: wrap; }
+.coach-attach-chip { display: inline-flex; align-items: center; gap: 6px; background: #EEF2FB; border: 1px solid #c9d6ee; border-radius: 12px; padding: 4px 8px; font-size: 11px; color: #185FA5; max-width: 220px; }
+.coach-attach-chip .coach-attach-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coach-attach-chip button { background: none; border: 0; color: #d32f2f; cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; }
+.coach-attach-chip img { width: 28px; height: 28px; border-radius: 4px; object-fit: cover; }
 .coach-send-btn { background: #0f3460; color: white; border: none; border-radius: 8px; padding: 8px 14px; cursor: pointer; font-weight: bold; font-size: 13px; }
 .coach-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .coach-setup-banner { background: #FAEEDA; border-left: 3px solid #EF9F27; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-bottom: 12px; font-size: 13px; color: #854F0B; }
@@ -529,7 +534,10 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
       </div>
     </div>
     <div class="coach-messages" id="coachMessages"></div>
+    <div class="coach-attach-bar" id="coachAttachBar" style="display:none"></div>
     <div class="coach-input-row">
+      <button class="coach-icon-btn" id="coachAttachBtn" onclick="document.getElementById('coachAttachInput').click()" title="Bijlage toevoegen (afbeelding of PDF)">📎</button>
+      <input type="file" id="coachAttachInput" accept="image/*,application/pdf,.pdf,.png,.jpg,.jpeg,.gif,.webp" multiple style="display:none" onchange="onCoachAttachFiles(event)">
       <textarea id="coachInput" placeholder="Vraag iets aan je coach…" rows="2" onkeydown="onCoachInputKey(event)"></textarea>
       <button class="coach-send-btn" id="coachSendBtn" onclick="sendCoachMessage()">Verstuur</button>
     </div>
@@ -2807,7 +2815,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 67;
+const APP_VERSION = 68;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3433,6 +3441,77 @@ function onCoachInputKey(e) {
   }
 }
 
+// Bijlagen-buffer voor de volgende coach-prompt. Elke entry:
+// { name, mediaType, data (base64), kind: 'image'|'document' }.
+// Bewust NIET in state.chatMessages opgeslagen — base64 zou de Gist-sync
+// per bericht met megabytes opblazen. Bijlages worden alleen meegestuurd
+// met de eerstvolgende API-call; in de chat-historie blijft een tekst-
+// notitie staan dat er bijlagen werden meegestuurd.
+let coachAttachments = [];
+const MAX_ATTACH_BYTES = 4 * 1024 * 1024; // 4 MB per bestand
+
+async function onCoachAttachFiles(ev) {
+  const files = Array.from(ev.target.files || []);
+  ev.target.value = '';
+  for (const file of files) {
+    if (file.size > MAX_ATTACH_BYTES) {
+      alert('"' + file.name + '" is groter dan 4 MB. Verklein eerst (screenshots: lagere resolutie, PDFs: comprimeren).');
+      continue;
+    }
+    const isImage = /^image\//.test(file.type);
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (!isImage && !isPdf) {
+      alert('"' + file.name + '" wordt niet ondersteund. Alleen afbeeldingen (PNG/JPG/GIF/WebP) of PDFs.');
+      continue;
+    }
+    try {
+      const data = await fileToBase64(file);
+      coachAttachments.push({
+        name: file.name,
+        mediaType: isImage ? (file.type || 'image/png') : 'application/pdf',
+        data: data,
+        kind: isImage ? 'image' : 'document'
+      });
+    } catch(e) {
+      alert('Kon "' + file.name + '" niet lezen: ' + (e.message || e));
+    }
+  }
+  renderCoachAttachments();
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const s = String(r.result || '');
+      const i = s.indexOf(',');
+      resolve(i >= 0 ? s.slice(i + 1) : s);
+    };
+    r.onerror = () => reject(new Error('FileReader-fout'));
+    r.readAsDataURL(file);
+  });
+}
+
+function renderCoachAttachments() {
+  const bar = document.getElementById('coachAttachBar');
+  if (!bar) return;
+  if (!coachAttachments.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.style.display = 'flex';
+  bar.innerHTML = coachAttachments.map((a, i) => {
+    const thumb = a.kind === 'image'
+      ? '<img src="data:' + a.mediaType + ';base64,' + a.data + '" alt="">'
+      : '<span>📄</span>';
+    return '<span class="coach-attach-chip">' + thumb +
+      '<span class="coach-attach-name" title="' + escapeAttr(a.name) + '">' + escapeHtml(a.name) + '</span>' +
+      '<button onclick="removeCoachAttachment(' + i + ')" title="Verwijderen">×</button></span>';
+  }).join('');
+}
+
+function removeCoachAttachment(i) {
+  coachAttachments.splice(i, 1);
+  renderCoachAttachments();
+}
+
 async function sendCoachMessage() {
   if (coachInflight) return;
   const cfg = getCoachConfig();
@@ -3440,11 +3519,21 @@ async function sendCoachMessage() {
 
   const input = document.getElementById('coachInput');
   const text = input.value.trim();
-  if (!text) return;
+  const pendingAttach = coachAttachments.slice();
+  if (!text && !pendingAttach.length) return;
+
+  // Bewaar in chat-historie: alleen tekst + lijst van bijlage-namen (geen
+  // base64 om de state niet op te blazen). De daadwerkelijke binary gaat
+  // alleen in deze API-call mee.
+  const displayText = text + (pendingAttach.length
+    ? '\n\n📎 ' + pendingAttach.length + ' bijlage' + (pendingAttach.length === 1 ? '' : 'n') + ': ' + pendingAttach.map(a => a.name).join(', ')
+    : '');
 
   state.chatMessages = state.chatMessages || [];
-  state.chatMessages.push({ role: 'user', content: text, ts: new Date().toISOString() });
+  state.chatMessages.push({ role: 'user', content: displayText, ts: new Date().toISOString() });
   input.value = '';
+  coachAttachments = [];
+  renderCoachAttachments();
   renderCoachMessages();
   await saveState();
 
@@ -3462,10 +3551,24 @@ async function sendCoachMessage() {
 
   try {
     const systemBlocks = buildCoachSystemPrompt();
-    const apiMessages = state.chatMessages
+    // Bouw de message-array uit historie. Het LAATSTE user-bericht krijgt
+    // de bijlages mee als multimodale content blocks.
+    const historyMsgs = state.chatMessages
       .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content && m.content.trim())
-      .slice(-30)
-      .map(m => ({ role: m.role, content: m.content.trim() }));
+      .slice(-30);
+    const apiMessages = historyMsgs.map((m, idx) => {
+      const isLast = idx === historyMsgs.length - 1;
+      if (isLast && m.role === 'user' && pendingAttach.length) {
+        const blocks = pendingAttach.map(a => ({
+          type: a.kind, // 'image' of 'document'
+          source: { type: 'base64', media_type: a.mediaType, data: a.data }
+        }));
+        // Tekst-blok erna zodat het model de bijlages eerst ziet
+        blocks.push({ type: 'text', text: m.content.trim() });
+        return { role: 'user', content: blocks };
+      }
+      return { role: m.role, content: m.content.trim() };
+    });
 
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
