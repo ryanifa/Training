@@ -2815,7 +2815,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 69;
+const APP_VERSION = 70;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3978,6 +3978,62 @@ function showDetail(sid, di) {
 // Bouwt de gedeelde HTML voor een sessie (titel, sub, metrics, feedback,
 // steps en actie-knoppen). Gebruikt door de detail-overlay én de
 // Vandaag-pagina, zodat het uiterlijk en de acties identiek zijn.
+// Map van dagcode (M1D1, M6D22, ...) naar Dynamic Triathlete video-URL.
+// Wordt bij init asynchroon gevuld uit data/dynamic_triathlete_routines.csv.
+const DT_VIDEO_LINKS = {};
+
+async function loadDTVideoLinks() {
+  try {
+    const r = await fetch('data/dynamic_triathlete_routines.csv', { cache: 'no-cache' });
+    if (!r.ok) return;
+    const txt = (await r.text()).replace(/^﻿/, '');
+    const lines = txt.split(/\r?\n/);
+    // sla header over
+    for (let i = 1; i < lines.length; i++) {
+      const row = parseCSVRow(lines[i]);
+      if (!row || row.length < 3) continue;
+      const code = (row[0] || '').trim().toUpperCase();
+      const url = (row[2] || '').trim();
+      if (/^M\d+D\d+$/.test(code) && /^https?:\/\//i.test(url)) {
+        DT_VIDEO_LINKS[code] = url;
+      }
+    }
+  } catch(e) { console.warn('loadDTVideoLinks:', e); }
+}
+
+function parseCSVRow(line) {
+  if (!line) return null;
+  const out = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { inQ = !inQ; continue; }
+    if (c === ',' && !inQ) { out.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+// Haal de M<m>D<d> code uit een sessie. Eerst kijken in source ("Dynamic
+// Triathlete M6D22"), dan in sessionId ("mobility_m6d22").
+function getSessionDayCode(sess, sid) {
+  if (sess && typeof sess.source === 'string') {
+    const m = sess.source.match(/M(\d+)D(\d+)/i);
+    if (m) return ('M' + m[1] + 'D' + m[2]).toUpperCase();
+  }
+  if (sid) {
+    const m = String(sid).match(/m(\d+)d(\d+)/i);
+    if (m) return ('M' + m[1] + 'D' + m[2]).toUpperCase();
+  }
+  return null;
+}
+
+function getSessionVideoLink(sess, sid) {
+  const code = getSessionDayCode(sess, sid);
+  return code ? (DT_VIDEO_LINKS[code] || null) : null;
+}
+
 function buildSessionDetailHTML(weekId, di, sid) {
   const sess = SESSIONS[sid];
   if (!sess) return '';
@@ -4028,8 +4084,15 @@ function buildSessionDetailHTML(weekId, di, sid) {
     ? `<button class="mark-done-btn" onclick="openWorkout('${sid}',${di})" style="background:#FAEEDA;border-color:#EF9F27;color:#854F0B">🏃 Garmin workout</button>`
     : '';
 
+  // Klikbare titel als er een Dynamic Triathlete video-link beschikbaar is
+  // voor deze sessie (matched op M<m>D<d> in source of sessionId).
+  const videoUrl = getSessionVideoLink(sess, sid);
+  const titleHtml = videoUrl
+    ? `<a href="${escapeAttr(videoUrl)}" target="_blank" rel="noopener" style="color:#185FA5;text-decoration:none">${escapeHtml(sess.title)} <span style="font-size:12px">↗</span></a>`
+    : escapeHtml(sess.title);
+
   return `
-    <div class="detail-title">${sess.title}</div>
+    <div class="detail-title">${titleHtml}</div>
     <div class="detail-sub">${day.name} ${day.date} · ${displayDur}${displayDur !== sess.dur ? ' <span style="color:#7F77DD;font-size:11px">(werkelijk · plan: ' + sess.dur + ')</span>' : ''}</div>
     ${sourceHtml}
     ${metricsHtml}
@@ -5461,6 +5524,13 @@ function init() {
   try { updateNextRaceSub(); } catch(e) { console.warn('updateNextRaceSub:', e); }
   try { fixVersionFooter(); } catch(e) {}
   updateSyncBadge();
+
+  // Laad de video-link-tabel (Dynamic Triathlete). Asynchroon; zodra binnen
+  // herrenderen we zodat klikbare titels verschijnen.
+  loadDTVideoLinks().then(() => {
+    try { renderToday(); } catch(_) {}
+    try { if (selectedSess && selectedSess.sid) showDetail(selectedSess.sid, selectedSess.di); } catch(_) {}
+  });
 
   // 2. Op de achtergrond: eerst het plan uit de Gist (kan DEFAULT_PLAN
   //    vervangen), dan de state, en tot slot opnieuw renderen.
