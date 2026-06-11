@@ -1383,6 +1383,38 @@ function renderSeason() {
     else past.push(item);
   });
 
+  // Auto-ontdek extra race/event-sessies die in het plan staan maar niet
+  // in EVENTS. Coach- of editor-toegevoegde events worden zo automatisch
+  // zichtbaar in het seizoen-overzicht.
+  const knownSids = {};
+  EVENTS.forEach(e => { if (e.sid) knownSids[e.sid] = true; });
+  if (activePlan && activePlan.weekPlans && activePlan.sessions) {
+    Object.keys(activePlan.weekPlans).forEach(wk => {
+      (activePlan.weekPlans[wk] || []).forEach((day) => {
+        (day || []).forEach(sid => {
+          if (knownSids[sid]) return;
+          const sess = activePlan.sessions[sid];
+          if (!sess || (sess.type !== 'race' && sess.type !== 'event')) return;
+          knownSids[sid] = true;
+          const date = getPlanDateForSession(sid);
+          if (!date) return;
+          const daysUntil = getDaysUntil(date);
+          const item = {
+            sid: sid,
+            date: date,
+            name: sess.label || sid,
+            detail: sess.title && sess.title !== sess.label ? sess.title : '',
+            tier: 'C',
+            daysUntil: daysUntil,
+            inPlan: true
+          };
+          if (daysUntil >= 0) upcoming.push(item);
+          else past.push(item);
+        });
+      });
+    });
+  }
+
   upcoming.sort((a,b) => a.daysUntil - b.daysUntil);
   past.sort((a,b) => b.daysUntil - a.daysUntil); // most recent first
 
@@ -2815,7 +2847,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 70;
+const APP_VERSION = 71;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
