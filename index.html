@@ -444,6 +444,11 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
     <button class="nav-btn" onclick="showPage('status', this)"><span class="nav-full">Status</span><span class="nav-short">📈 Status</span></button>
   </div>
 </div>
+<div id="syncErrorBanner" style="display:none;background:#fef2f2;color:#7f1d1d;padding:8px 14px;border-bottom:1px solid #fecaca;font-size:13px;align-items:center;gap:8px;flex-wrap:wrap">
+  <span id="syncErrorBannerText" style="flex:1;min-width:200px">⚠️ Cloud-sync mislukt.</span>
+  <button onclick="retryStatePush()" style="background:white;border:1px solid #d32f2f;color:#d32f2f;padding:3px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:bold">↻ Probeer opnieuw</button>
+  <button onclick="hideSyncError()" style="background:none;border:0;color:#7f1d1d;cursor:pointer;font-size:18px;line-height:1;padding:0 4px">×</button>
+</div>
 </div>
 
 <div class="content">
@@ -787,6 +792,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
       <button class="modal-btn" onclick="forcePushUI()" title="Lokaal → cloud (overschrijf)">⬆ Forceer uploaden</button>
       <div style="flex:1"></div>
       <button class="modal-btn" onclick="openPlanEditor()" title="Plan (sessies + weekschema) bewerken">📝 Plan bewerken</button>
+      <button class="modal-btn" onclick="openSnapshots()" title="Lokale snapshots bekijken/herstellen">🗂 Snapshots</button>
       <button class="modal-btn" onclick="planSyncUI()" title="Plan (sessies + weken) naar Gist">📋 Plan-sync</button>
       <button class="modal-btn" onclick="syncNowManual()">🔄 Sync nu</button>
       <button class="modal-btn modal-btn-primary" onclick="connectSync()">Verbinden</button>
@@ -868,6 +874,28 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
       <div style="flex:1"></div>
       <button class="modal-btn" onclick="closeSessionEditor()">Annuleren</button>
       <button class="modal-btn modal-btn-primary" onclick="saveSessionEditor()">💾 Opslaan naar Gist</button>
+    </div>
+  </div>
+</div>
+
+<!-- SNAPSHOTS MODAL -->
+<div class="modal-overlay" id="snapshotsModal" onclick="onSnapshotsBgClick(event)">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">🗂 Lokale snapshots</div>
+        <div class="modal-sub">Dagelijkse back-ups van je state in IndexedDB. Max 14, oudste valt vanzelf af. Onafhankelijk van je Gist.</div>
+      </div>
+      <button class="modal-close" onclick="closeSnapshots()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="snapshotsList"></div>
+      <div class="modal-meta" id="snapshotsMsg" style="margin-top:6px;min-height:16px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn" onclick="snapshotNow()">📸 Snapshot nu</button>
+      <div style="flex:1"></div>
+      <button class="modal-btn" onclick="closeSnapshots()">Sluiten</button>
     </div>
   </div>
 </div>
@@ -1990,6 +2018,7 @@ async function saveState() {
     try { await window.storage.set('trainingState', JSON.stringify(blob)); }
     catch(e) { /* ignore */ }
   }
+  try { maybeAutoSnapshot(blob); } catch(_) {}
   scheduleCloudPush();
 }
 
@@ -2195,11 +2224,194 @@ async function pushToCloud() {
   try {
     await gistUpdate(cfg.gistId, cfg.token, buildStateBlob());
     lastSyncAt = new Date();
+    hideSyncError();
   } catch(e) {
     console.warn('pushToCloud:', e);
+    showSyncError(e && e.message ? e.message : String(e));
   } finally {
     isSyncing = false; updateSyncBadge();
   }
+}
+
+function showSyncError(msg) {
+  const el = document.getElementById('syncErrorBanner');
+  const txt = document.getElementById('syncErrorBannerText');
+  if (!el || !txt) return;
+  txt.textContent = '⚠️ Cloud-sync mislukt: ' + msg + ' — je wijzigingen staan lokaal nog wel.';
+  el.style.display = 'flex';
+}
+function hideSyncError() {
+  const el = document.getElementById('syncErrorBanner');
+  if (el) el.style.display = 'none';
+}
+async function retryStatePush() {
+  hideSyncError();
+  try { await pushToCloud(); } catch(_) {}
+}
+
+// ============================================================
+// IndexedDB snapshots (lokale back-up van state, los van Gist)
+// ============================================================
+const BACKUP_DB_NAME = 'trainingBackups';
+const BACKUP_DB_STORE = 'snapshots';
+const BACKUP_MAX = 14;
+const BACKUP_MIN_INTERVAL_MS = 6 * 3600 * 1000; // max 1 auto-snapshot per 6 uur
+let backupDbPromise = null;
+let lastAutoSnapshotTs = 0;
+
+function openBackupDB() {
+  if (backupDbPromise) return backupDbPromise;
+  backupDbPromise = new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') { reject(new Error('IndexedDB niet beschikbaar')); return; }
+    const req = indexedDB.open(BACKUP_DB_NAME, 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(BACKUP_DB_STORE)) {
+        db.createObjectStore(BACKUP_DB_STORE, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return backupDbPromise;
+}
+
+async function saveStateSnapshot(blob, label) {
+  try {
+    const db = await openBackupDB();
+    const id = new Date().toISOString() + '-' + Math.random().toString(36).slice(2, 6);
+    const entry = { id: id, ts: new Date().toISOString(), label: label || 'auto', size: JSON.stringify(blob || {}).length, blob: blob };
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(BACKUP_DB_STORE, 'readwrite');
+      const r = tx.objectStore(BACKUP_DB_STORE).put(entry);
+      r.onsuccess = resolve; r.onerror = () => reject(r.error);
+    });
+    await pruneOldSnapshots(BACKUP_MAX);
+  } catch(e) { console.warn('saveStateSnapshot:', e); }
+}
+
+async function listSnapshots() {
+  try {
+    const db = await openBackupDB();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(BACKUP_DB_STORE, 'readonly');
+      const r = tx.objectStore(BACKUP_DB_STORE).getAll();
+      r.onsuccess = () => resolve((r.result || []).sort((a, b) => (b.id > a.id ? 1 : -1)));
+      r.onerror = () => reject(r.error);
+    });
+  } catch(e) { console.warn('listSnapshots:', e); return []; }
+}
+
+async function pruneOldSnapshots(max) {
+  const items = await listSnapshots();
+  if (items.length <= max) return;
+  try {
+    const db = await openBackupDB();
+    const tx = db.transaction(BACKUP_DB_STORE, 'readwrite');
+    const store = tx.objectStore(BACKUP_DB_STORE);
+    for (let i = max; i < items.length; i++) store.delete(items[i].id);
+  } catch(e) { console.warn('pruneOldSnapshots:', e); }
+}
+
+async function deleteSnapshotEntry(id) {
+  try {
+    const db = await openBackupDB();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(BACKUP_DB_STORE, 'readwrite');
+      const r = tx.objectStore(BACKUP_DB_STORE).delete(id);
+      r.onsuccess = resolve; r.onerror = () => reject(r.error);
+    });
+  } catch(e) { console.warn('deleteSnapshotEntry:', e); }
+}
+
+async function getSnapshotBlob(id) {
+  const db = await openBackupDB();
+  return await new Promise((resolve, reject) => {
+    const tx = db.transaction(BACKUP_DB_STORE, 'readonly');
+    const r = tx.objectStore(BACKUP_DB_STORE).get(id);
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+
+// Trigger vanuit saveState: max 1 auto-snapshot per BACKUP_MIN_INTERVAL_MS.
+function maybeAutoSnapshot(blob) {
+  const now = Date.now();
+  if (now - lastAutoSnapshotTs < BACKUP_MIN_INTERVAL_MS) return;
+  lastAutoSnapshotTs = now;
+  saveStateSnapshot(blob, 'auto');
+}
+
+// ---- Snapshot-UI (modal) ----
+
+async function openSnapshots() {
+  closeSync();
+  await renderSnapshotsList();
+  document.getElementById('snapshotsMsg').textContent = '';
+  document.getElementById('snapshotsModal').classList.add('active');
+}
+function closeSnapshots() { document.getElementById('snapshotsModal').classList.remove('active'); }
+function onSnapshotsBgClick(e) { if (e.target.id === 'snapshotsModal') closeSnapshots(); }
+
+function summarizeSnapshot(blob) {
+  if (!blob) return '';
+  const parts = [];
+  if (blob.done) parts.push(Object.keys(blob.done).length + ' done');
+  if (blob.metrics) parts.push(Object.keys(blob.metrics).length + ' metrics');
+  if (blob.moves) parts.push(Object.keys(blob.moves).length + ' moves');
+  if (blob.importedFits) parts.push(blob.importedFits.length + ' imports');
+  if (blob.chatMessages) parts.push(blob.chatMessages.length + ' chat');
+  return parts.join(' · ');
+}
+
+async function renderSnapshotsList() {
+  const items = await listSnapshots();
+  const el = document.getElementById('snapshotsList');
+  if (!items.length) {
+    el.innerHTML = '<div class="modal-meta">Nog geen snapshots. Worden automatisch elke ~6u gemaakt bij een save, of klik "Snapshot nu".</div>';
+    return;
+  }
+  el.innerHTML = items.map(it => {
+    const date = new Date(it.ts).toLocaleString('nl-NL');
+    const sizeKB = Math.round((it.size || 0) / 1024 * 10) / 10;
+    const summary = summarizeSnapshot(it.blob);
+    return '<div style="border:1px solid #eee;border-radius:6px;padding:8px 10px;margin-bottom:6px">' +
+      '<div style="font-weight:bold;font-size:13px">' + escapeHtml(date) +
+      ' <span style="font-weight:normal;color:#888;font-size:11px">(' + sizeKB + ' KB · ' + escapeHtml(it.label || '') + ')</span></div>' +
+      '<div style="font-size:11px;color:#666;margin:4px 0">' + escapeHtml(summary) + '</div>' +
+      '<div style="display:flex;gap:6px">' +
+        '<button class="modal-btn" style="font-size:11px;padding:3px 8px" onclick="restoreSnapshot(\'' + escapeAttr(it.id) + '\')">↩ Herstellen</button>' +
+        '<button class="modal-btn modal-btn-danger" style="font-size:11px;padding:3px 8px" onclick="deleteSnapshotUI(\'' + escapeAttr(it.id) + '\')">🗑 Verwijderen</button>' +
+      '</div></div>';
+  }).join('');
+}
+
+async function snapshotNow() {
+  await saveStateSnapshot(buildStateBlob(), 'handmatig');
+  await renderSnapshotsList();
+  document.getElementById('snapshotsMsg').textContent = '✅ Snapshot toegevoegd';
+}
+
+async function restoreSnapshot(id) {
+  if (!confirm('Lokale state vervangen door deze snapshot? Huidige niet-gesnapshotte wijzigingen gaan verloren.\n\nDaarna druk je op ⬆ Forceer uploaden om de Gist bij te werken.')) return;
+  try {
+    const item = await getSnapshotBlob(id);
+    if (!item || !item.blob) { document.getElementById('snapshotsMsg').textContent = '❌ Snapshot niet gevonden.'; return; }
+    applyStateBlob(item.blob);
+    writeLocalBlob(buildStateBlob());
+    try { renderWeek(activeWeek); } catch(_) {}
+    try { renderToday(); } catch(_) {}
+    try { renderStatus(); } catch(_) {}
+    try { renderSeason(); } catch(_) {}
+    try { renderCoachMessages(); } catch(_) {}
+    document.getElementById('snapshotsMsg').textContent = '✅ Hersteld. Open ☁︎ en klik ⬆ Forceer uploaden om de Gist bij te werken.';
+  } catch(e) { document.getElementById('snapshotsMsg').textContent = '❌ Herstellen mislukt: ' + (e.message || e); }
+}
+
+async function deleteSnapshotUI(id) {
+  if (!confirm('Snapshot verwijderen?')) return;
+  await deleteSnapshotEntry(id);
+  await renderSnapshotsList();
 }
 
 async function pullFromCloud() {
@@ -2847,7 +3059,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 71;
+const APP_VERSION = 72;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
