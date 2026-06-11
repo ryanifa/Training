@@ -3083,7 +3083,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 74;
+const APP_VERSION = 75;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -4002,7 +4002,24 @@ async function resetWeek() {
 }
 
 async function cleanWeek() {
-  const movesToDelete = Object.keys(state.moves).filter(key => key.startsWith(activeWeek + ':'));
+  // Geïmporteerde sessies (via __import-moves) blijven ALTIJD bewaard,
+  // ook als ze niet in het oorspronkelijke plan staan.
+  const importedSids = new Set();
+  Object.keys(state.moves || {}).forEach(k => {
+    if (!k.startsWith(activeWeek + ':__import:')) return;
+    // sleutel: <wk>:__import:<sid>:<datum>
+    const rest = k.slice((activeWeek + ':__import:').length);
+    const lastColon = rest.lastIndexOf(':');
+    const sid = lastColon >= 0 ? rest.slice(0, lastColon) : rest;
+    if (sid) importedSids.add(sid);
+  });
+
+  const movesToDelete = Object.keys(state.moves).filter(key => {
+    if (!key.startsWith(activeWeek + ':')) return false;
+    // __import-moves NIET verwijderen — die markeren geïmporteerde sessies
+    if (key.startsWith(activeWeek + ':__import:')) return false;
+    return true;
+  });
   const skipsToDelete = Object.keys(state.skips || {}).filter(key => key.startsWith(activeWeek + ':'));
 
   const planSessIds = new Set();
@@ -4014,19 +4031,23 @@ async function cleanWeek() {
     if (!key.startsWith(activeWeek + ':')) return false;
     const parts = key.split(':');
     const sid = parts.slice(2).join(':');
-    return !planSessIds.has(sid);
+    if (planSessIds.has(sid)) return false;
+    if (importedSids.has(sid)) return false; // geïmporteerd → behouden
+    return true;
   });
   const orphanMissed = Object.keys(state.missed).filter(key => {
     if (!key.startsWith(activeWeek + ':')) return false;
     const parts = key.split(':');
     const sid = parts.slice(2).join(':');
-    return !planSessIds.has(sid);
+    if (planSessIds.has(sid)) return false;
+    if (importedSids.has(sid)) return false;
+    return true;
   });
 
   const totaal = movesToDelete.length + skipsToDelete.length + orphanDone.length + orphanMissed.length;
 
   if (totaal === 0) {
-    alert('Deze week is al schoon. Geen verplaatsingen, vervangingen of verweesde markeringen gevonden.');
+    alert('Deze week is al schoon. Geen verplaatsingen, vervangingen of verweesde markeringen gevonden.\n\n(Geïmporteerde sessies worden nooit verwijderd.)');
     return;
   }
 
@@ -4039,11 +4060,15 @@ async function cleanWeek() {
   closeDetail();
   renderWeek(activeWeek);
 
+  const importNote = importedSids.size
+    ? '\n\nℹ️ ' + importedSids.size + ' geïmporteerde sessie(s) behouden.'
+    : '';
   alert('✅ Opgeschoond:\n' +
     '• ' + movesToDelete.length + ' verplaatsing(en) verwijderd\n' +
     '• ' + skipsToDelete.length + ' vervanging(en) teruggedraaid\n' +
     '• ' + orphanDone.length + ' verweesde gedaan-markering(en) verwijderd\n' +
-    '• ' + orphanMissed.length + ' verweesde gemist-markering(en) verwijderd');
+    '• ' + orphanMissed.length + ' verweesde gemist-markering(en) verwijderd' +
+    importNote);
 }
 
 function showDebug() {
