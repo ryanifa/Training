@@ -900,6 +900,30 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
   </div>
 </div>
 
+<!-- REASSIGN SESSION-TYPE MODAL -->
+<div class="modal-overlay" id="reassignModal" onclick="onReassignBgClick(event)">
+  <div class="modal-box" style="max-width:500px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">↻ Wijzig sessie-type</div>
+        <div class="modal-sub">Verplaatst done-markering, metrics en feedback van de oude naar de nieuwe sessie op dezelfde dag.</div>
+      </div>
+      <button class="modal-close" onclick="closeReassign()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-meta" id="reassignFrom" style="margin-bottom:8px"></div>
+      <label style="display:block;font-size:12px;font-weight:bold;color:#555;margin-bottom:4px">Nieuw sessie-type</label>
+      <select id="reassignSelect" style="width:100%;padding:7px 9px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;background:white"></select>
+      <div class="modal-meta" id="reassignMsg" style="margin-top:8px;min-height:16px"></div>
+    </div>
+    <div class="modal-footer">
+      <div style="flex:1"></div>
+      <button class="modal-btn" onclick="closeReassign()">Annuleren</button>
+      <button class="modal-btn modal-btn-primary" onclick="doReassign()">Toepassen</button>
+    </div>
+  </div>
+</div>
+
 <!-- COACH SETTINGS MODAL -->
 <div class="modal-overlay" id="coachSettingsModal" onclick="onCoachSettingsBgClick(event)">
   <div class="modal-box" style="max-width:520px">
@@ -3059,7 +3083,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 73;
+const APP_VERSION = 74;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -4161,6 +4185,98 @@ function closeDetail() {
   setDetailVisible(false);
 }
 
+// ============================================================
+// Reassign sessie-type: verplaats import-state (done/missed/feedback/
+// metrics/__import-move) van oude sessie-id naar nieuwe, op dezelfde dag.
+// ============================================================
+let reassignContext = null;
+
+function openReassign(weekId, di, oldSid) {
+  reassignContext = { weekId: weekId, di: di, oldSid: oldSid };
+  const oldSess = SESSIONS[oldSid];
+  const from = oldSess ? (oldSess.label + ' (' + oldSid + ')') : oldSid;
+  document.getElementById('reassignFrom').textContent = 'Verplaatsen vanuit: ' + from;
+  // Vul de dropdown met alle bestaande sessies (gegroepeerd op type) — handig
+  // omdat het echte type van de import per ongeluk verkeerd kan zijn gekozen.
+  const opts = buildPlanSessionOptions().replace(
+    /<option value="">[^<]*<\/option>/,
+    '<option value="">— kies nieuwe sessie-id —</option>'
+  );
+  document.getElementById('reassignSelect').innerHTML = opts;
+  document.getElementById('reassignSelect').value = oldSid;
+  document.getElementById('reassignMsg').textContent = '';
+  document.getElementById('reassignModal').classList.add('active');
+}
+function closeReassign() {
+  document.getElementById('reassignModal').classList.remove('active');
+  reassignContext = null;
+}
+function onReassignBgClick(ev) { if (ev.target.id === 'reassignModal') closeReassign(); }
+
+function isoForWeekDay(weekId, di) {
+  const meta = WEEK_META.find(m => m.id === weekId);
+  if (!meta) return null;
+  const d = parseDate(meta.start);
+  if (!d || isNaN(d)) return null;
+  d.setDate(d.getDate() + di);
+  return formatIso(d);
+}
+
+async function doReassign() {
+  if (!reassignContext) return;
+  const newSid = document.getElementById('reassignSelect').value;
+  const msg = document.getElementById('reassignMsg');
+  if (!newSid) { msg.textContent = '❌ Kies een sessie-id.'; return; }
+  if (!SESSIONS[newSid]) { msg.textContent = '❌ Onbekende sessie-id.'; return; }
+  const ctx = reassignContext;
+  const { weekId, di, oldSid } = ctx;
+  if (newSid === oldSid) { closeReassign(); return; }
+
+  const oldKey = weekId + ':' + di + ':' + oldSid;
+  const newKey = weekId + ':' + di + ':' + newSid;
+
+  // Done / Missed
+  if (state.done && state.done[oldKey]) { state.done[newKey] = true; delete state.done[oldKey]; }
+  if (state.missed && state.missed[oldKey]) { state.missed[newKey] = true; delete state.missed[oldKey]; }
+  // Feedback
+  if (state.feedback && state.feedback[oldKey]) { state.feedback[newKey] = state.feedback[oldKey]; delete state.feedback[oldKey]; }
+  // Metrics
+  if (state.metrics && state.metrics[oldKey]) { state.metrics[newKey] = state.metrics[oldKey]; delete state.metrics[oldKey]; }
+  // __import-move: hernoem alle entries van vorm "<wk>:__import:<oldSid>:<datum>"
+  state.moves = state.moves || {};
+  Object.keys(state.moves).forEach(k => {
+    const prefix = weekId + ':__import:' + oldSid + ':';
+    if (!k.startsWith(prefix)) return;
+    const datum = k.slice(prefix.length);
+    const newMoveKey = weekId + ':__import:' + newSid + ':' + datum;
+    state.moves[newMoveKey] = state.moves[k];
+    delete state.moves[k];
+  });
+
+  // Zorg dat de nieuwe sessie ook daadwerkelijk op deze dag zichtbaar is.
+  // Als 'ie al in het plan staat (geval 1) of via __import op deze dag is
+  // gezet, dan klaar. Anders een nieuwe __import-move toevoegen.
+  const view = getWeekView(weekId);
+  const day = view && view.days[di];
+  const alreadyOnDay = day && day.sessions && day.sessions.indexOf(newSid) >= 0;
+  if (!alreadyOnDay) {
+    const iso = isoForWeekDay(weekId, di);
+    if (iso) state.moves[weekId + ':__import:' + newSid + ':' + iso] = di;
+  }
+
+  await saveState();
+  // Detail-overlay sluiten (de oude sessie heeft hier niets meer; nieuwe staat
+  // er nu wel) en views verversen.
+  selectedSess = { sid: newSid, di: di };
+  closeReassign();
+  try { renderWeek(weekId); } catch(_) {}
+  try { renderToday(); } catch(_) {}
+  try { renderStatus(); } catch(_) {}
+  // Open meteen het detail van de nieuwe sessie zodat de gebruiker ziet dat
+  // 't gelukt is.
+  try { showDetail(newSid, di); } catch(_) {}
+}
+
 // Format minuten naar "Xu Ymin" of "Y min"
 function formatDuration(minutes) {
   if (typeof minutes !== 'number' || minutes <= 0) return '';
@@ -4327,6 +4443,13 @@ function buildSessionDetailHTML(weekId, di, sid) {
   const garminBtn = garminEligible
     ? `<button class="mark-done-btn" onclick="openWorkout('${sid}',${di})" style="background:#FAEEDA;border-color:#EF9F27;color:#854F0B">🏃 Garmin workout</button>`
     : '';
+  // Wijzig-knop als er een import (done/metrics) aan deze sessie hangt;
+  // verplaatst alles naar een andere sessie-id op dezelfde dag.
+  const fbKeyR = weekId + ':' + di + ':' + sid;
+  const hasImportData = !!(state.done && state.done[fbKeyR]) || !!(state.metrics && state.metrics[fbKeyR]);
+  const reassignBtn = hasImportData
+    ? `<button class="mark-done-btn" onclick="openReassign('${weekId}',${di},'${sid}')" style="background:#EEF2FB;border-color:#378ADD;color:#185FA5">↻ Wijzig sessie-type</button>`
+    : '';
 
   // Klikbare titel als er een Dynamic Triathlete video-link beschikbaar is
   // voor deze sessie (matched op M<m>D<d> in source of sessionId).
@@ -4354,7 +4477,8 @@ function buildSessionDetailHTML(weekId, di, sid) {
     <button class="feedback-btn${hasFb ? ' has-feedback' : ''}" onclick="openFeedback('${sid}',${di})">
       📝 ${hasFb ? 'Bewerk feedback' : 'Feedback toevoegen'}
     </button>
-    ${garminBtn}`;
+    ${garminBtn}
+    ${reassignBtn}`;
 }
 
 function renderToday() {
