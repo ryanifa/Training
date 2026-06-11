@@ -671,9 +671,9 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
     <div class="modal-body">
       <div class="fit-dropzone" id="fitDropzone" onclick="document.getElementById('fitFile').click()" ondragover="onFitDragOver(event)" ondragleave="onFitDragLeave(event)" ondrop="onFitDrop(event)">
         <div style="font-size:28px">📂</div>
-        <div style="font-weight:bold;margin-top:4px;font-size:13px">Sleep .FIT-bestand(en) hier of klik om te kiezen</div>
-        <div style="font-size:11px;color:#888;margin-top:2px">Meerdere tegelijk kan ook</div>
-        <input type="file" id="fitFile" accept=".fit,application/octet-stream" multiple style="display:none" onchange="onFitFiles(event)">
+        <div style="font-weight:bold;margin-top:4px;font-size:13px">Sleep .FIT- of .ZIP-bestand(en) hier of klik om te kiezen</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">Meerdere tegelijk kan ook · zip wordt automatisch uitgepakt</div>
+        <input type="file" id="fitFile" accept=".fit,.zip,application/octet-stream,application/zip,application/x-zip-compressed" multiple style="display:none" onchange="onFitFiles(event)">
       </div>
       <div id="fitItems"></div>
       <div class="modal-meta" id="importMeta"></div>
@@ -3059,7 +3059,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 72;
+const APP_VERSION = 73;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -5068,6 +5068,56 @@ function onImportBgClick(e) {
 let fitItems = []; // [{id, file, item, error, status}]
 let _fitParserLoading = null;
 
+let _jsZipLoading = null;
+async function loadJSZip() {
+  if (window.JSZip) return window.JSZip;
+  if (_jsZipLoading) return _jsZipLoading;
+  const candidates = [
+    'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
+    'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'
+  ];
+  _jsZipLoading = (async () => {
+    let lastErr = null;
+    for (const url of candidates) {
+      try {
+        await new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = url;
+          s.onload = res;
+          s.onerror = () => rej(new Error('script load fail: ' + url));
+          document.head.appendChild(s);
+        });
+        if (window.JSZip) return window.JSZip;
+        lastErr = new Error('Script geladen maar window.JSZip ontbreekt: ' + url);
+      } catch(e) { lastErr = e; }
+    }
+    throw lastErr || new Error('Geen werkende CDN gevonden voor JSZip');
+  })();
+  return _jsZipLoading;
+}
+
+// Pakt een .zip bestand uit en geeft een array van File-objecten terug die
+// alleen de .fit-bestanden bevatten. Filename matcht zo dat de bestaande
+// FIT-parser-loop ze als gewone uploads kan behandelen.
+async function extractFitsFromZip(zipFile) {
+  const JSZip = await loadJSZip();
+  const buf = await zipFile.arrayBuffer();
+  const zip = await JSZip.loadAsync(buf);
+  const fits = [];
+  const entries = [];
+  zip.forEach((path, entry) => entries.push({ path, entry }));
+  for (const { path, entry } of entries) {
+    if (entry.dir) continue;
+    if (!/\.fit$/i.test(path)) continue;
+    const data = await entry.async('uint8array');
+    // Behoud alleen de basename — sommige archieven zitten in subfolders.
+    const base = path.split('/').pop().split('\\').pop();
+    fits.push(new File([data], base, { type: 'application/octet-stream' }));
+  }
+  return fits;
+}
+
 async function loadFitParser() {
   if (window._FitParser) return window._FitParser;
   if (_fitParserLoading) return _fitParserLoading;
@@ -5115,7 +5165,31 @@ async function handleFitFiles(fileList) {
   try { FitParser = await loadFitParser(); }
   catch(e) { setImportMsg('Kon FIT-parser niet laden: ' + e.message, 'err'); return; }
 
+  // Pak zip-bestanden eerst uit naar losse .fit's. Heeft een zip geen
+  // .fit's, dan markeren we 'm als foutregel zodat de gebruiker dat ziet.
+  const expanded = [];
   for (const file of fileList) {
+    if (/\.zip$/i.test(file.name)) {
+      try {
+        const fits = await extractFitsFromZip(file);
+        if (!fits.length) {
+          const id = 'z' + Math.random().toString(36).slice(2, 8);
+          fitItems.push({ id, file, item: null, error: 'Geen .fit-bestanden gevonden in deze zip', status: 'error' });
+          renderFitItems();
+          continue;
+        }
+        for (const f of fits) expanded.push(f);
+      } catch(err) {
+        const id = 'z' + Math.random().toString(36).slice(2, 8);
+        fitItems.push({ id, file, item: null, error: 'Kon zip niet uitpakken: ' + (err.message || err), status: 'error' });
+        renderFitItems();
+      }
+    } else {
+      expanded.push(file);
+    }
+  }
+
+  for (const file of expanded) {
     if (!/\.fit$/i.test(file.name)) continue;
     const id = 'f' + Math.random().toString(36).slice(2, 8);
     const fi = { id, file, item: null, error: null, status: 'parsing' };
