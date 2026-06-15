@@ -496,7 +496,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
     <button class="week-nav-btn" style="flex:0;font-size:11px;padding:5px 10px;background:#f8f8f8" onclick="cleanWeek()" title="Maakt verplaatsingen en vervangingen in deze week ongedaan en zet de week terug naar het oorspronkelijke plan">🔄 Reset naar plan</button>
     <button class="week-nav-btn" style="flex:0;font-size:11px;padding:5px 10px;background:#E1F5EE;border-color:#1D9E75;color:#0F6E56" onclick="openWeekEditor()" title="Wijzig het plan zelf: sessies per dag toevoegen/verwijderen (alle apparaten)">✏️ Weekschema</button>
     <button class="week-nav-btn" style="flex:0;font-size:11px;padding:5px 10px;background:#E1F5EE;border-color:#1D9E75;color:#0F6E56" onclick="openSessionEditor()" title="Wijzig de inhoud van een training: stappen, targets, duur">🏊 Sessies</button>
-    <button class="week-nav-btn" style="flex:0;font-size:11px;padding:5px 10px;background:#EEEDFE;border-color:#7F77DD;color:#534AB7" onclick="openImport()">📂 Importeer .FIT</button>
+    <button class="week-nav-btn" style="flex:0;font-size:11px;padding:5px 10px;background:#EEEDFE;border-color:#7F77DD;color:#534AB7" id="openImportBtn" data-testid="open-import-btn" onclick="openImport()">📂 Importeer .FIT</button>
   </div>
   <div class="week-info" id="weekInfo"></div>
   <div class="hint"><span class="hint-icon">↔️</span> Sleep trainingen naar een andere dag om te verschuiven · Klik op een training voor details</div>
@@ -686,7 +686,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 </div>
 
 <!-- IMPORT MODAL -->
-<div class="modal-overlay" id="importModal" onclick="onImportBgClick(event)">
+<div class="modal-overlay" id="importModal" data-testid="import-modal" onclick="onImportBgClick(event)">
   <div class="modal-box" style="max-width:640px">
     <div class="modal-header">
       <div>
@@ -700,15 +700,15 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
         <div style="font-size:28px">📂</div>
         <div style="font-weight:bold;margin-top:4px;font-size:13px">Sleep .FIT- of .ZIP-bestand(en) hier of klik om te kiezen</div>
         <div style="font-size:11px;color:#888;margin-top:2px">Meerdere tegelijk kan ook · zip wordt automatisch uitgepakt</div>
-        <input type="file" id="fitFile" accept=".fit,.zip,application/octet-stream,application/zip,application/x-zip-compressed" multiple style="display:none" onchange="onFitFiles(event)">
+        <input type="file" id="fitFile" data-testid="fit-file-input" accept=".fit,.zip,application/octet-stream,application/zip,application/x-zip-compressed" multiple style="display:none" onchange="onFitFiles(event)">
       </div>
-      <div id="fitItems"></div>
-      <div class="modal-meta" id="importMeta"></div>
+      <div id="fitItems" data-testid="fit-items"></div>
+      <div class="modal-meta" id="importMeta" data-testid="import-status"></div>
     </div>
     <div class="modal-footer">
       <div style="flex:1"></div>
       <button class="modal-btn" onclick="closeImport()">Annuleer</button>
-      <button class="modal-btn modal-btn-primary" id="fitImportBtn" onclick="processFitImport()" disabled>Importeren</button>
+      <button class="modal-btn modal-btn-primary" id="fitImportBtn" data-testid="confirm-import-btn" onclick="processFitImport()" disabled>Importeren</button>
     </div>
   </div>
 </div>
@@ -3110,7 +3110,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 80;
+const APP_VERSION = 81;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
