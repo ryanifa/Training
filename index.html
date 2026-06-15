@@ -467,6 +467,11 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
   <button onclick="retryStatePush()" style="background:white;border:1px solid #d32f2f;color:#d32f2f;padding:3px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:bold">↻ Probeer opnieuw</button>
   <button onclick="hideSyncError()" style="background:none;border:0;color:#7f1d1d;cursor:pointer;font-size:18px;line-height:1;padding:0 4px">×</button>
 </div>
+<div id="updateBanner" style="display:none;background:#E3F2FD;color:#0D47A1;padding:8px 14px;border-bottom:1px solid #90CAF9;font-size:13px;align-items:center;gap:8px;flex-wrap:wrap">
+  <span id="updateBannerText" style="flex:1;min-width:200px">🔄 Nieuwe versie beschikbaar.</span>
+  <button onclick="applyAppUpdate()" style="background:#185FA5;border:1px solid #185FA5;color:white;padding:3px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:bold">Herlaad</button>
+  <button onclick="dismissUpdateBanner()" style="background:none;border:0;color:#0D47A1;cursor:pointer;font-size:18px;line-height:1;padding:0 4px">×</button>
+</div>
 </div>
 
 <div class="content">
@@ -3101,7 +3106,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 76;
+const APP_VERSION = 77;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3111,6 +3116,54 @@ function fixVersionFooter() {
   const base = isNaN(lm) ? new Date() : lm;
   stamp = base.toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   el.textContent = 'v' + APP_VERSION + ' · ' + stamp;
+}
+
+// ============================================================
+// AUTO-UPDATE: poll de gehoste index.html en toon banner als
+// er een nieuwere APP_VERSION op de server staat.
+// ============================================================
+let updateBannerDismissedFor = 0;
+let knownRemoteVersion = 0;
+async function checkForAppUpdate() {
+  try {
+    const url = location.pathname + '?_v=' + Date.now();
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) return;
+    const txt = await r.text();
+    const m = txt.match(/const\s+APP_VERSION\s*=\s*(\d+)/);
+    if (!m) return;
+    const remote = parseInt(m[1], 10);
+    if (!isFinite(remote)) return;
+    knownRemoteVersion = remote;
+    if (remote > APP_VERSION && remote !== updateBannerDismissedFor) {
+      showUpdateBanner(remote);
+    }
+  } catch(_) { /* netwerkprobleem — stilletjes negeren, volgende poll probeert opnieuw */ }
+}
+function showUpdateBanner(remote) {
+  const el = document.getElementById('updateBanner');
+  const txt = document.getElementById('updateBannerText');
+  if (!el || !txt) return;
+  txt.textContent = '🔄 Nieuwe versie beschikbaar (v' + remote + ', je hebt v' + APP_VERSION + ').';
+  el.style.display = 'flex';
+}
+function dismissUpdateBanner() {
+  updateBannerDismissedFor = knownRemoteVersion;
+  const el = document.getElementById('updateBanner');
+  if (el) el.style.display = 'none';
+}
+function applyAppUpdate() {
+  // Cache-busting reload zodat ook PWA/HTTP-cache de nieuwe index.html ophaalt
+  const url = location.pathname + '?_v=' + Date.now() + location.hash;
+  location.replace(url);
+}
+function startUpdateChecker() {
+  // Eerste check kort na load, daarna elke 60s, en altijd bij terugkeer naar de tab
+  setTimeout(checkForAppUpdate, 5000);
+  setInterval(checkForAppUpdate, 60000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkForAppUpdate();
+  });
 }
 
 function updateNextRaceSub() {
@@ -6031,6 +6084,7 @@ function init() {
   try { renderSeason(); } catch(e) { console.warn('renderSeason:', e); }
   try { updateNextRaceSub(); } catch(e) { console.warn('updateNextRaceSub:', e); }
   try { fixVersionFooter(); } catch(e) {}
+  try { startUpdateChecker(); } catch(e) {}
   updateSyncBadge();
 
   // Laad de video-link-tabel (Dynamic Triathlete). Asynchroon; zodra binnen
