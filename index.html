@@ -3106,7 +3106,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 77;
+const APP_VERSION = 78;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -4264,6 +4264,14 @@ function renderWeek(key) {
 }
 
 function selectSess(sid, di) {
+  // Toggle: nogmaals klikken op de actieve pill sluit het detailpaneel,
+  // net als de uitklap-toggle op de Vandaag-pagina.
+  const panel = document.getElementById('detailPanel');
+  const isOpen = panel && panel.style.display !== 'none';
+  if (isOpen && selectedSess && selectedSess.sid === sid && selectedSess.di === di) {
+    closeDetail();
+    return;
+  }
   selectedSess = {sid, di};
   showDetail(sid, di);
 }
