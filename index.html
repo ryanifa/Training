@@ -196,6 +196,8 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 .detail-sub { font-size: 13px; color: #888; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
 .detail-title-toggle { cursor: pointer; }
 .detail-title.detail-title-toggle::after { content: ' ▾'; color: #888; font-weight: normal; font-size: 13px; }
+.detail-summary-label { cursor: pointer; font-weight: 600; font-size: 15px; color: #1a1a2e; padding: 4px 0 10px; margin-bottom: 8px; border-bottom: 1px solid #eee; display: flex; align-items: center; gap: 8px; user-select: none; }
+.detail-chev { color: #888; font-size: 13px; font-weight: normal; margin-left: auto; }
 .step { border-radius: 6px; padding: 7px 10px; margin-bottom: 4px; }
 .step-row { display: flex; justify-content: space-between; align-items: baseline; }
 .step-name { font-size: 13px; font-weight: bold; }
@@ -3108,7 +3110,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 79;
+const APP_VERSION = 80;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -4437,16 +4439,24 @@ function showDetail(sid, di) {
   if(!w || !w.days[di]) return;
   setDetailVisible(true);
   const panel = document.getElementById('detailPanel');
+  // Voeg een eigen "summary"-regel met sess.label toe zodat er altijd een
+  // duidelijke, niet-link tap-target is om het paneel te sluiten — ook als
+  // de detail-title een video-link is.
+  const headerHtml =
+    '<div class="detail-summary-label" onclick="closeDetail()">' +
+      escapeHtml(sess.label) +
+      ' <span class="detail-chev">▾</span>' +
+    '</div>';
   panel.innerHTML =
     '<button class="detail-close" onclick="closeDetail()" aria-label="Sluiten">×</button>' +
+    headerHtml +
     buildSessionDetailHTML(activeWeek, di, sid);
-  // Titel + ondertitel fungeren als toggle-sluiten (spiegelt summary-klik op
-  // Vandaag-kaarten). Klik op een embedded link (bv. video) sluit niet.
-  const titleEl = panel.querySelector('.detail-title');
+  // Ondertitel blijft ook tap-to-close (titel is vaak een video-link).
   const subEl = panel.querySelector('.detail-sub');
-  const onTitleTap = (e) => { if (e.target.closest('a')) return; closeDetail(); };
-  if (titleEl) { titleEl.classList.add('detail-title-toggle'); titleEl.addEventListener('click', onTitleTap); }
-  if (subEl) { subEl.classList.add('detail-title-toggle'); subEl.addEventListener('click', onTitleTap); }
+  if (subEl) {
+    subEl.classList.add('detail-title-toggle');
+    subEl.addEventListener('click', (e) => { if (e.target.closest('a')) return; closeDetail(); });
+  }
 }
 
 // Bouwt de gedeelde HTML voor een sessie (titel, sub, metrics, feedback,
