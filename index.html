@@ -820,6 +820,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
       <div style="flex:1"></div>
       <button class="modal-btn" onclick="openPlanEditor()" title="Plan (sessies + weekschema) bewerken">📝 Plan bewerken</button>
       <button class="modal-btn" onclick="openSnapshots()" title="Lokale snapshots bekijken/herstellen">🗂 Snapshots</button>
+      <button class="modal-btn" onclick="openRestoreFromJson()" title="State herstellen door JSON in te plakken">📥 Herstel uit JSON</button>
       <button class="modal-btn" onclick="planSyncUI()" title="Plan (sessies + weken) naar Gist">📋 Plan-sync</button>
       <button class="modal-btn" onclick="syncNowManual()">🔄 Sync nu</button>
       <button class="modal-btn modal-btn-primary" onclick="connectSync()">Verbinden</button>
@@ -923,6 +924,30 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
       <button class="modal-btn" onclick="snapshotNow()">📸 Snapshot nu</button>
       <div style="flex:1"></div>
       <button class="modal-btn" onclick="closeSnapshots()">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESTORE FROM JSON MODAL -->
+<div class="modal-overlay" id="restoreJsonModal" onclick="onRestoreJsonBgClick(event)">
+  <div class="modal-box" style="max-width:640px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">📥 State herstellen uit JSON</div>
+        <div class="modal-sub">Plak hier een eerder geredde trainingState-JSON (bv. uit een Gist-revisie). Wordt lokaal én op de Gist gezet.</div>
+      </div>
+      <button class="modal-close" onclick="closeRestoreFromJson()">×</button>
+    </div>
+    <div class="modal-body">
+      <textarea id="restoreJsonText" class="modal-textarea" placeholder='{"_meta":{...},"done":{...},"metrics":{...},...}' style="font-family:monospace;font-size:11px;min-height:240px"></textarea>
+      <div class="modal-meta" id="restoreJsonPreview" style="margin-top:6px"></div>
+      <div class="modal-meta" id="restoreJsonMsg" style="margin-top:6px;min-height:16px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn" onclick="restoreJsonPreviewNow()">🔍 Controleer</button>
+      <div style="flex:1"></div>
+      <button class="modal-btn" onclick="closeRestoreFromJson()">Annuleer</button>
+      <button class="modal-btn modal-btn-primary" onclick="restoreJsonApply()">Herstel & upload</button>
     </div>
   </div>
 </div>
@@ -2465,6 +2490,78 @@ async function deleteSnapshotUI(id) {
   await renderSnapshotsList();
 }
 
+// ---- Herstel uit ingeplakte JSON (bv. uit een Gist-revisie) ----
+function openRestoreFromJson() {
+  closeSync();
+  document.getElementById('restoreJsonText').value = '';
+  document.getElementById('restoreJsonPreview').textContent = '';
+  document.getElementById('restoreJsonMsg').textContent = '';
+  document.getElementById('restoreJsonModal').classList.add('active');
+}
+function closeRestoreFromJson() {
+  document.getElementById('restoreJsonModal').classList.remove('active');
+}
+function onRestoreJsonBgClick(e) {
+  if (e.target.id === 'restoreJsonModal') closeRestoreFromJson();
+}
+function parseRestoreJson() {
+  const raw = document.getElementById('restoreJsonText').value.trim();
+  if (!raw) throw new Error('Plak eerst de JSON.');
+  let obj;
+  try { obj = JSON.parse(raw); }
+  catch(e) { throw new Error('Ongeldige JSON: ' + e.message); }
+  if (!obj || typeof obj !== 'object') throw new Error('JSON moet een object zijn.');
+  // Minimale sanity-check: minstens één van de bekende state-velden moet aanwezig zijn
+  const known = ['done','missed','moves','skips','rest','feedback','metrics','strength','chatMessages','importedFits','_meta'];
+  const hasAny = known.some(k => Object.prototype.hasOwnProperty.call(obj, k));
+  if (!hasAny) throw new Error('JSON bevat geen herkenbare state-velden (done/metrics/chatMessages/...).');
+  return obj;
+}
+function restoreJsonPreviewNow() {
+  try {
+    const obj = parseRestoreJson();
+    document.getElementById('restoreJsonPreview').textContent = '✅ JSON oké · ' + summarizeSnapshot(obj);
+    document.getElementById('restoreJsonMsg').textContent = '';
+  } catch(e) {
+    document.getElementById('restoreJsonPreview').textContent = '';
+    document.getElementById('restoreJsonMsg').textContent = '❌ ' + (e.message || e);
+  }
+}
+async function restoreJsonApply() {
+  let obj;
+  try { obj = parseRestoreJson(); }
+  catch(e) { document.getElementById('restoreJsonMsg').textContent = '❌ ' + (e.message || e); return; }
+  if (!confirm('Lokale state én Gist vervangen door deze JSON?\n\nEr wordt eerst een veiligheidssnapshot van je huidige state gemaakt.')) return;
+  const msg = document.getElementById('restoreJsonMsg');
+  msg.textContent = '⏳ Bezig…';
+  try {
+    // 1. Veiligheidssnapshot van de huidige state
+    await saveStateSnapshot(buildStateBlob(), 'pre-restore-uit-json');
+    // 2. Werk de in-memory state bij + schrijf naar localStorage
+    applyStateBlob(obj);
+    if (!obj._meta) obj._meta = {};
+    obj._meta.updatedAt = new Date().toISOString();
+    writeLocalBlob(obj);
+    // 3. Force-push naar Gist (als sync is ingesteld)
+    const cfg = getSyncConfig();
+    if (cfg && cfg.token && cfg.gistId) {
+      try { await pushToCloud(); }
+      catch(e) { console.warn('pushToCloud na restore:', e); msg.textContent = '⚠️ Lokaal hersteld, maar Gist-push mislukte: ' + (e.message || e) + '. Open ☁︎ en klik ⬆ Forceer uploaden.'; }
+    }
+    // 4. UI bijwerken
+    try { renderWeek(activeWeek); } catch(_) {}
+    try { renderToday(); } catch(_) {}
+    try { renderStatus(); } catch(_) {}
+    try { renderSeason(); } catch(_) {}
+    try { renderCoachMessages(); } catch(_) {}
+    if (!msg.textContent.startsWith('⚠️')) {
+      msg.textContent = '✅ Hersteld en geüpload. Herlaad eventueel andere apparaten.';
+    }
+  } catch(e) {
+    msg.textContent = '❌ Herstellen mislukt: ' + (e.message || e);
+  }
+}
+
 async function pullFromCloud() {
   const cfg = getSyncConfig();
   if (!cfg || !cfg.token || !cfg.gistId) return false;
@@ -3110,7 +3207,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 82;
+const APP_VERSION = 83;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
