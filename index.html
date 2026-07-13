@@ -446,7 +446,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
   <div class="header-row">
     <div style="min-width:0">
       <h1>Trainingsoverzicht — Ryan Douglas</h1>
-      <div class="sub sub-long">Seizoen 2026 · 70.3 Luxemburg 11 jul · IJsselmeer 30 aug · Zwarte Plasje 13 sep · Marathon 1 nov</div>
+      <div class="sub sub-long">Seizoen 2026 · 70.3 Luxemburg 11 jul · Zwarte Plasje 13 sep · Marathon 1 nov</div>
       <div class="sub sub-short" id="subShort">Seizoen 2026</div>
     </div>
     <button class="sync-btn" id="syncNavBtn" onclick="openSync()" title="Synchroniseren tussen apparaten">☁︎</button>
@@ -1423,7 +1423,7 @@ const EVENTS = [
   { sid:'race_apeldoorn',     date:'2026-08-05', name:'Sprint triathlon Apeldoorn', detail:'Z3/Z4 mag · benen sparen voor Marken dag erna', tier:'C' },
   { sid:'race_marken',        date:'2026-08-06', name:'Marken–Monnickendam — 3 km OWZ', detail:'Z2 · zwemmen op vermoeide benen · IJsselmeer prep', tier:'C' },
   { sid:'race_epe',           date:'2026-08-23', name:'¼ Triathlon Epe', detail:'Z1/Z2 · activering 7 dagen voor IJsselmeer · stop bij ongemak', tier:'C' },
-  { sid:'race_ijsselmeer',    date:'2026-08-30', name:'🏆 IJsselmeer 22 km OWZ', detail:'Eerste 15 km Z2 · laatste 5 km mag Z3 · voeding elke 45 min', tier:'A' },
+  { sid:'race_ijsselmeer',    date:'2026-08-30', name:'IJsselmeer 22 km OWZ', detail:'Eerste 15 km Z2 · laatste 5 km mag Z3 · voeding elke 45 min · fun-editie', tier:'C' },
   { sid:'race_zwarte_plasje', date:'2026-09-13', name:'🏆 Zwarte Plasje ¼ triathlon', detail:'Z3/Z4 alles geven · Zwem 1000m · Fiets 40km @ 213–249W · Loop 10km @ 4:45/km', tier:'A' },
   { sid:'race_marathon',      date:'2026-11-01', name:'🏆 Herfstmarathon', detail:'Doel: sub 3:30 · eerste helft 1:46 · tweede helft 1:44', tier:'A' },
 ];
@@ -3207,7 +3207,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 83;
+const APP_VERSION = 84;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
