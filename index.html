@@ -3232,7 +3232,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 85;
+const APP_VERSION = 86;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3613,7 +3613,12 @@ function renderCoachMessages() {
       let html = '<div class="coach-msg ' + cls + '">' + escapeHtml(ex.text || m.content) + '</div>';
       if (ex.patch) html += renderPatchCard(ex.patch, idx, m);
       else if (ex.truncated) {
-        html += '<div class="coach-patch" style="border-color:#EF9F27;background:#FAEEDA"><div class="coach-patch-title" style="color:#854F0B">⚠️ Afgekapt antwoord</div><div class="coach-patch-sum" style="color:#854F0B">De ```plan-patch``` is geopend maar niet afgesloten — meestal token-limiet. Vraag de coach: "Splits de patch in kleinere delen (max 2 sessies per patch)" of "Geef alleen de weekPlan-changes zonder volledige session-definities (alleen sids waar al definities voor zijn)".</div></div>';
+        const confirmed = m && m.stopReason === 'max_tokens';
+        const heading = confirmed ? '⚠️ Token-limiet bereikt' : '⚠️ Afgekapt antwoord';
+        const detail = confirmed
+          ? 'De coach hield op na ' + (m.outputTokens || '?') + ' output-tokens; het ```plan-patch```-blok is niet afgemaakt. Vraag: <em>"Splits de patch: geef alleen sessie X compleet, ik vraag de rest apart."</em>'
+          : 'De ```plan-patch``` is geopend maar niet afgesloten — meestal token-limiet. Vraag de coach: "Splits de patch in kleinere delen (max 2 sessies per patch)" of "Geef alleen de weekPlan-changes zonder volledige session-definities".';
+        html += '<div class="coach-patch" style="border-color:#EF9F27;background:#FAEEDA"><div class="coach-patch-title" style="color:#854F0B">' + heading + '</div><div class="coach-patch-sum" style="color:#854F0B">' + detail + '</div></div>';
       } else if (ex.parseError) {
         html += '<div class="coach-patch" style="border-color:#EF9F27;background:#FAEEDA"><div class="coach-patch-title" style="color:#854F0B">⚠️ JSON-fout in plan-patch</div><div class="coach-patch-sum" style="color:#854F0B">Het ```plan-patch``` blok is afgesloten maar bevat ongeldige JSON. Vraag de coach het opnieuw te genereren, evt. in een kleinere patch.</div></div>';
       }
@@ -3662,8 +3667,14 @@ function renderPatchCard(patch, idx, m) {
     }
     return '?';
   }).map(escapeHtml).join('<br>');
+  const hitTokenLimit = !!(m && m.stopReason === 'max_tokens');
+  const tokenHint = hitTokenLimit
+    ? '<div style="margin-top:4px"><strong>💡 Token-limiet bereikt</strong> — het antwoord van de coach werd afgekapt' +
+      (m.outputTokens ? ' (na ' + m.outputTokens + ' tokens)' : '') +
+      '. Vraag: <em>"Splits deze patch: geef alleen sessie X met alle stappen; ik vraag de rest apart."</em></div>'
+    : '';
   const warnBanner = hasEmpty
-    ? '<div style="background:#FAEEDA;border:1px solid #EF9F27;color:#854F0B;padding:6px 8px;border-radius:6px;font-size:11px;margin-top:6px"><strong>Let op:</strong> één of meer sessies hebben 0 stappen. De coach claimt iets te hebben aangepast maar levert lege items aan. Niet toepassen tenzij je écht alles wilt wissen.</div>'
+    ? '<div style="background:#FAEEDA;border:1px solid #EF9F27;color:#854F0B;padding:6px 8px;border-radius:6px;font-size:11px;margin-top:6px"><strong>Let op:</strong> één of meer sessies hebben 0 stappen. De coach claimt iets te hebben aangepast maar levert lege items aan. Niet toepassen tenzij je écht alles wilt wissen.' + tokenHint + '</div>'
     : '';
   let status;
   if (m && m.patchApplied) status = '<div class="coach-patch-status" style="color:#0F6E56">✅ Toegepast</div>';
@@ -4097,7 +4108,7 @@ async function sendCoachMessage() {
       },
       body: JSON.stringify({
         model: cfg.model || DEFAULT_COACH_MODEL,
-        max_tokens: 8192,
+        max_tokens: 16000,
         system: systemBlocks,
         messages: apiMessages
       })
@@ -4115,7 +4126,13 @@ async function sendCoachMessage() {
     const txt = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
     if (!txt) throw new Error('Leeg antwoord van het model');
 
-    state.chatMessages.push({ role: 'assistant', content: txt, ts: new Date().toISOString() });
+    // stop_reason opslaan zodat we later (bij render) kunnen laten zien of
+    // de patch echt was afgekapt door de output-token-limiet.
+    const stopReason = data.stop_reason || null;
+    const msgObj = { role: 'assistant', content: txt, ts: new Date().toISOString() };
+    if (stopReason) msgObj.stopReason = stopReason;
+    if (data.usage && data.usage.output_tokens != null) msgObj.outputTokens = data.usage.output_tokens;
+    state.chatMessages.push(msgObj);
     await saveState();
   } catch(e) {
     state.chatMessages.push({ role: 'error', content: '❌ ' + e.message, ts: new Date().toISOString() });
