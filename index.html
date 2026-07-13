@@ -3232,7 +3232,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 86;
+const APP_VERSION = 87;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3668,13 +3668,15 @@ function renderPatchCard(patch, idx, m) {
     return '?';
   }).map(escapeHtml).join('<br>');
   const hitTokenLimit = !!(m && m.stopReason === 'max_tokens');
-  const tokenHint = hitTokenLimit
+  const extraHint = hitTokenLimit
     ? '<div style="margin-top:4px"><strong>💡 Token-limiet bereikt</strong> — het antwoord van de coach werd afgekapt' +
       (m.outputTokens ? ' (na ' + m.outputTokens + ' tokens)' : '') +
       '. Vraag: <em>"Splits deze patch: geef alleen sessie X met alle stappen; ik vraag de rest apart."</em></div>'
-    : '';
+    : '<div style="margin-top:4px"><strong>💡 Waarschijnlijk hallucinatie</strong> — het antwoord eindigde netjes' +
+      (m && m.outputTokens ? ' (' + m.outputTokens + ' tokens gebruikt)' : '') +
+      '. De coach beweert steps te geven maar levert lege items. Vraag concreet: <em>"Herhaal de patch, maar toon in het items-array minstens 3 stap-objecten met alle velden z/n/d/m/note ingevuld."</em> Open het 🔍 blok hieronder om te zien wat er precies uit kwam.</div>';
   const warnBanner = hasEmpty
-    ? '<div style="background:#FAEEDA;border:1px solid #EF9F27;color:#854F0B;padding:6px 8px;border-radius:6px;font-size:11px;margin-top:6px"><strong>Let op:</strong> één of meer sessies hebben 0 stappen. De coach claimt iets te hebben aangepast maar levert lege items aan. Niet toepassen tenzij je écht alles wilt wissen.' + tokenHint + '</div>'
+    ? '<div style="background:#FAEEDA;border:1px solid #EF9F27;color:#854F0B;padding:6px 8px;border-radius:6px;font-size:11px;margin-top:6px"><strong>Let op:</strong> één of meer sessies hebben 0 stappen. De coach claimt iets te hebben aangepast maar levert lege items aan. Niet toepassen tenzij je écht alles wilt wissen.' + extraHint + '</div>'
     : '';
   let status;
   if (m && m.patchApplied) status = '<div class="coach-patch-status" style="color:#0F6E56">✅ Toegepast</div>';
@@ -3682,10 +3684,20 @@ function renderPatchCard(patch, idx, m) {
   else status = '<div style="display:flex;gap:6px;margin-top:8px">' +
     '<button class="modal-btn modal-btn-primary" onclick="applyCoachPatch(' + idx + ')">✓ Toepassen</button>' +
     '<button class="modal-btn" onclick="discardCoachPatch(' + idx + ')">Negeren</button></div>';
+  // Raw patch-JSON in een uitklap-vak — cruciaal om te zien wat de coach
+  // werkelijk uitspuwde als er "0 stappen" staat maar de coach beweert
+  // dat er wel steps zijn.
+  const rawId = 'patchRaw_' + idx;
+  const rawJson = escapeHtml(JSON.stringify(patch, null, 2));
+  const rawBlock =
+    '<details style="margin-top:8px;font-size:11px">' +
+      '<summary style="cursor:pointer;color:#7F77DD;user-select:none">🔍 Toon patch-JSON</summary>' +
+      '<pre id="' + rawId + '" style="background:#F5F5FA;padding:8px;border-radius:6px;overflow-x:auto;font-family:monospace;font-size:11px;line-height:1.4;margin:6px 0 0;max-height:280px;overflow-y:auto">' + rawJson + '</pre>' +
+    '</details>';
   return '<div class="coach-patch">' +
     '<div class="coach-patch-title">📝 Voorgestelde planwijziging</div>' +
     '<div class="coach-patch-sum">' + escapeHtml(patch.summary || 'Planwijziging') + '</div>' +
-    '<div class="coach-patch-detail">' + lines + '</div>' + warnBanner + status + '</div>';
+    '<div class="coach-patch-detail">' + lines + '</div>' + warnBanner + rawBlock + status + '</div>';
 }
 
 const VALID_SID_RE = /^[a-z0-9_]+$/;
@@ -3913,6 +3925,7 @@ Regels:
 - Race-prioriteit wijzigen (A/B/C): 'session'-change met dezelfde sessionId waarin je alleen het "tier"-veld ('A'/'B'/'C', of leeg om terug te vallen op de app-default) aanpast. Werk gelijk ook label/title bij als de prioriteit dat impliceert (bv. 🏆 alleen voor A-races).
 - Verwijderen van een race uit het seizoen: 'weekPlan'-change die de race uit z'n dag-array haalt (alleen die dag aanpassen). De race verdwijnt uit het schema en wordt in het seizoen-overzicht gemarkeerd als "niet in plan" (her-plaatsbaar via de Verzet-knop).
 - Geef nooit ongevraagd een plan-patch. De gebruiker keurt elke wijziging in de app goed; jij past niets zelf toe.
+- Elke session-change MOET een niet-lege steps[0].items array bevatten (minstens 1 stap-object met velden z/n/d/m/note). NOOIT een sessie inleveren waarvan items: []. Als je twijfelt over de inhoud van een sessie, vraag dan éérst door aan de gebruiker in plaats van een lege placeholder te sturen.
 - HOUD PATCHES KLEIN. Het antwoord wordt afgekapt rond ~8000 tokens. Vuistregels: max 3 nieuwe volledige session-definities per patch (incl. alle stappen). Als je meer sessies tegelijk wilt inplannen, splits dan: eerste patch definieert de sessies, tweede patch alleen weekPlan-changes die ernaar verwijzen (zonder de session-objecten te herhalen). Een weekPlan-change die naar een bestaande sid verwijst kost nauwelijks tokens.`;
 
   const dynamicBlock = `Vandaag is ${today}.
