@@ -446,7 +446,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
   <div class="header-row">
     <div style="min-width:0">
       <h1>Trainingsoverzicht — Ryan Douglas</h1>
-      <div class="sub sub-long">Seizoen 2026 · 70.3 Luxemburg 11 jul · Zwarte Plasje 13 sep · Marathon 1 nov</div>
+      <div class="sub sub-long" id="subLong">Seizoen 2026</div>
       <div class="sub sub-short" id="subShort">Seizoen 2026</div>
     </div>
     <button class="sync-btn" id="syncNavBtn" onclick="openSync()" title="Synchroniseren tussen apparaten">☁︎</button>
@@ -1471,6 +1471,17 @@ function formatCountdown(days) {
   return 'over ' + Math.round(days/30) + ' maanden';
 }
 
+// Effectieve tier van een event: session.tier uit het plan wint van EVENTS-hardcode.
+// Zo kan de coach (of jij zelf via de Sessie-editor) de A/B/C-classificatie
+// veranderen zonder dat er een app-update nodig is.
+function getEffectiveTier(sid, fallback) {
+  if (sid && activePlan && activePlan.sessions && activePlan.sessions[sid]) {
+    const t = activePlan.sessions[sid].tier;
+    if (t === 'A' || t === 'B' || t === 'C') return t;
+  }
+  return fallback || 'C';
+}
+
 function renderSeason() {
   const container = document.getElementById('seasonContent');
   if (!container) return;
@@ -1482,7 +1493,8 @@ function renderSeason() {
     const planDate = e.sid ? getPlanDateForSession(e.sid) : null;
     const effectiveDate = planDate || e.date;
     const daysUntil = getDaysUntil(effectiveDate);
-    const item = Object.assign({}, e, { date: effectiveDate, daysUntil: daysUntil, inPlan: !!planDate });
+    const tier = getEffectiveTier(e.sid, e.tier);
+    const item = Object.assign({}, e, { date: effectiveDate, daysUntil: daysUntil, inPlan: !!planDate, tier: tier });
     if (daysUntil >= 0) upcoming.push(item);
     else past.push(item);
   });
@@ -1508,7 +1520,7 @@ function renderSeason() {
             date: date,
             name: sess.label || sid,
             detail: sess.title && sess.title !== sess.label ? sess.title : '',
-            tier: 'C',
+            tier: getEffectiveTier(sid, 'C'),
             daysUntil: daysUntil,
             inPlan: true
           };
@@ -3087,6 +3099,14 @@ function renderSessionEditor() {
       '<input value="' + escapeAttr(it.note) + '" placeholder="note (optioneel)" onchange="sessEditItem(' + idx + ',&quot;note&quot;,this.value)">' +
     '</div>'
   ).join('');
+  const isRaceOrEvent = (s.type === 'race' || s.type === 'event');
+  const tierVal = s.tier || '';
+  const tierOpts = ['','A','B','C'].map(v =>
+    '<option value="' + v + '"' + (v === tierVal ? ' selected' : '') + '>' + (v || '— geen —') + '</option>'
+  ).join('');
+  const tierRow = isRaceOrEvent
+    ? '<div class="se-field"><label>Race-tier (A/B/C) <span style="font-weight:normal;color:#888;font-size:11px">— bepaalt kleur & badge in seizoen-overzicht</span></label><select onchange="sessEditField(&quot;tier&quot;,this.value)">' + tierOpts + '</select></div>'
+    : '';
   form.innerHTML =
     '<div class="se-field"><label>Sessie-ID</label><input value="' + escapeAttr(sessionEditorId) + '" disabled></div>' +
     '<div class="se-row2">' +
@@ -3095,13 +3115,18 @@ function renderSessionEditor() {
     '</div>' +
     '<div class="se-field"><label>Korte naam (label)</label><input value="' + escapeAttr(s.label) + '" onchange="sessEditField(&quot;label&quot;,this.value)"></div>' +
     '<div class="se-field"><label>Titel</label><input value="' + escapeAttr(s.title) + '" onchange="sessEditField(&quot;title&quot;,this.value)"></div>' +
+    tierRow +
     '<div style="font-weight:bold;font-size:13px;margin:10px 0 6px">Stappen</div>' +
     stepsHtml +
     '<button class="modal-btn" onclick="sessEditAddStep()" style="margin-top:4px">➕ Stap toevoegen</button>';
 }
 
 function sessEditField(field, value) {
-  sessionEditorDraft[sessionEditorId][field] = value;
+  if (field === 'tier' && !value) {
+    delete sessionEditorDraft[sessionEditorId].tier;
+  } else {
+    sessionEditorDraft[sessionEditorId][field] = value;
+  }
   if (field === 'label') document.getElementById('sessEditPicker').innerHTML = sessEditPickerOptions();
 }
 function sessEditItem(idx, field, value) {
@@ -3207,7 +3232,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 84;
+const APP_VERSION = 85;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3280,16 +3305,31 @@ function updateNextRaceSub() {
   };
   const today = new Date(); today.setHours(0,0,0,0);
   const dated = EVENTS
-    .map(e => ({ date: (e.sid && getPlanDateForSession(e.sid)) || e.date, name: SHORT[e.sid] || e.name }))
+    .map(e => ({ sid: e.sid, date: (e.sid && getPlanDateForSession(e.sid)) || e.date, name: SHORT[e.sid] || e.name, tier: getEffectiveTier(e.sid, e.tier) }))
     .filter(r => new Date(r.date) >= today)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
   const next = dated[0];
   const el = document.getElementById('subShort');
-  if (!el) return;
-  if (!next) { el.textContent = 'Seizoen 2026'; return; }
-  const days = Math.round((new Date(next.date) - today) / 86400000);
-  const dateNL = new Date(next.date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
-  el.textContent = next.name + ' · ' + dateNL + ' · over ' + days + ' dgn';
+  if (el) {
+    if (!next) { el.textContent = 'Seizoen 2026'; }
+    else {
+      const days = Math.round((new Date(next.date) - today) / 86400000);
+      const dateNL = new Date(next.date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+      el.textContent = next.name + ' · ' + dateNL + ' · over ' + days + ' dgn';
+    }
+  }
+  // Lange versie: seizoensoverzicht van komende A-races (voor breed scherm)
+  const elLong = document.getElementById('subLong');
+  if (elLong) {
+    const aRaces = dated.filter(r => r.tier === 'A');
+    if (aRaces.length === 0) elLong.textContent = 'Seizoen 2026';
+    else {
+      elLong.textContent = 'Seizoen 2026 · ' + aRaces.map(r => {
+        const d = new Date(r.date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+        return r.name + ' ' + d;
+      }).join(' · ');
+    }
+  }
 }
 
 // ============================================================
@@ -3851,7 +3891,7 @@ Als — en alléén als — de gebruiker vraagt om het plan, schema of een sessi
 \`\`\`
 Elke change in "changes" is één van:
 - Weekschema (welke sessies op welke dag): { "type": "weekPlan", "weekId": "w6", "days": { "5": ["bike_long"], "6": ["swim_tech","swim_ow_long"] } }. dayIndex 0=ma..6=zo; alleen de genoemde dagen veranderen; gebruik [] voor rust.
-- Sessie-inhoud (de bibliotheek, geldt voor alle weken die de sessie gebruiken): { "type": "session", "sessionId": "bike_z3", "session": { "type":"bike", "label":"Fiets Z3", "dur":"±1u 30 min", "title":"Fietsen — zone 3", "source":"(optioneel: programma-bron, bv. 'Dynamic Triathlete M1D4')", "steps":[{"sess":"","items":[{"z":"sz2","n":"Warming-up","d":"10 min","m":"<130W · HR <120","note":""}]}] } }
+- Sessie-inhoud (de bibliotheek, geldt voor alle weken die de sessie gebruiken): { "type": "session", "sessionId": "bike_z3", "session": { "type":"bike", "label":"Fiets Z3", "dur":"±1u 30 min", "title":"Fietsen — zone 3", "source":"(optioneel: programma-bron, bv. 'Dynamic Triathlete M1D4')", "tier":"(optioneel: 'A' / 'B' / 'C' voor races/events — bepaalt de A/B/C-badge en kleur in het seizoen-overzicht)", "steps":[{"sess":"","items":[{"z":"sz2","n":"Warming-up","d":"10 min","m":"<130W · HR <120","note":""}]}] } }
 
 Regels:
 - Nieuwe sessionId's aanmaken is toegestaan via een 'session'-change; gebruik 'm daarna direct in een weekPlan-change in dezelfde patch. sessionId mag alleen a-z, 0-9 en _ bevatten (bv. mobility_hip_opener).
@@ -3859,6 +3899,7 @@ Regels:
 - Het optionele veld "source" in een sessie verwijst naar het bronprogramma (bv. een Dynamic Triathlete dag) en wordt onder de titel getoond.
 - Mobility- en recovery-sessies zijn ondersteunende achtergrond-trainingen; tel ze NIET mee in trainingsbelasting-, TSS- of intensiteitsanalyses. Garmin-push is voor die types uitgeschakeld in de app.
 - Hernoemen van een race/training: 'session'-change met dezelfde sessionId waarin je label en title aanpast — het seizoen-overzicht en week-pillen pakken het automatisch op.
+- Race-prioriteit wijzigen (A/B/C): 'session'-change met dezelfde sessionId waarin je alleen het "tier"-veld ('A'/'B'/'C', of leeg om terug te vallen op de app-default) aanpast. Werk gelijk ook label/title bij als de prioriteit dat impliceert (bv. 🏆 alleen voor A-races).
 - Verwijderen van een race uit het seizoen: 'weekPlan'-change die de race uit z'n dag-array haalt (alleen die dag aanpassen). De race verdwijnt uit het schema en wordt in het seizoen-overzicht gemarkeerd als "niet in plan" (her-plaatsbaar via de Verzet-knop).
 - Geef nooit ongevraagd een plan-patch. De gebruiker keurt elke wijziging in de app goed; jij past niets zelf toe.
 - HOUD PATCHES KLEIN. Het antwoord wordt afgekapt rond ~8000 tokens. Vuistregels: max 3 nieuwe volledige session-definities per patch (incl. alle stappen). Als je meer sessies tegelijk wilt inplannen, splits dan: eerste patch definieert de sessies, tweede patch alleen weekPlan-changes die ernaar verwijzen (zonder de session-objecten te herhalen). Een weekPlan-change die naar een bestaande sid verwijst kost nauwelijks tokens.`;
