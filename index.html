@@ -3232,7 +3232,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 88;
+const APP_VERSION = 89;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -4553,6 +4553,47 @@ async function doReassign() {
   try { showDetail(newSid, di); } catch(_) {}
 }
 
+// Verwijder alle import-data (done/missed/feedback/metrics + __import-move
+// + importedFits-fingerprint) voor een sessie op een specifieke dag.
+// De sessie zelf en het plan blijven ongemoeid; alleen de "geïmporteerd"-
+// status wordt teruggedraaid, zodat je 'm eventueel opnieuw kunt importeren.
+async function deleteImportedSession(weekId, di, sid) {
+  const sess = SESSIONS[sid];
+  const label = sess ? sess.label : sid;
+  if (!confirm('Import van "' + label + '" op deze dag verwijderen?\n\n' +
+    '• done/gemist markeringen worden gewist\n' +
+    '• feedback en metrics gewist\n' +
+    '• __import-move gewist (sessie verdwijnt van de dag als \'ie niet in het plan staat)\n' +
+    '• fingerprint uit importedFits gewist (agent kan \'m dan opnieuw importeren)\n\n' +
+    'De sessie zelf in de bibliotheek en het plan blijven ongewijzigd.')) return;
+  const key = weekId + ':' + di + ':' + sid;
+  // 1. Done / Missed / Feedback / Metrics
+  if (state.done && state.done[key]) delete state.done[key];
+  if (state.missed && state.missed[key]) delete state.missed[key];
+  if (state.feedback && state.feedback[key]) delete state.feedback[key];
+  // Bewaar metrics eventjes om de fingerprint eruit te halen voor step 3
+  const metricsBlob = state.metrics && state.metrics[key];
+  if (metricsBlob) delete state.metrics[key];
+  // 2. __import-moves voor deze sessie op deze dag verwijderen
+  state.moves = state.moves || {};
+  const iso = isoForWeekDay(weekId, di);
+  Object.keys(state.moves).forEach(k => {
+    if (k === weekId + ':__import:' + sid + ':' + (iso || '')) delete state.moves[k];
+  });
+  // 3. Fingerprint uit importedFits verwijderen (heuristiek: match op datum + sport).
+  //    Zonder de originele FIT kunnen we niet 100% zeker matchen; we halen alle
+  //    fingerprints eruit die deze isoDate bevatten — dat volstaat om dubbele-
+  //    import-detectie te resetten voor deze dag.
+  if (state.importedFits && iso) {
+    state.importedFits = state.importedFits.filter(fp => !String(fp).includes(iso));
+  }
+  await saveState();
+  closeDetail();
+  try { renderWeek(weekId); } catch(_) {}
+  try { renderToday(); } catch(_) {}
+  try { renderStatus(); } catch(_) {}
+}
+
 // Format minuten naar "Xu Ymin" of "Y min"
 function formatDuration(minutes) {
   if (typeof minutes !== 'number' || minutes <= 0) return '';
@@ -4735,12 +4776,14 @@ function buildSessionDetailHTML(weekId, di, sid) {
   const garminBtn = garminEligible
     ? `<button class="mark-done-btn" onclick="openWorkout('${sid}',${di})" style="background:#FAEEDA;border-color:#EF9F27;color:#854F0B">🏃 Garmin workout</button>`
     : '';
-  // Wijzig-knop als er een import (done/metrics) aan deze sessie hangt;
-  // verplaatst alles naar een andere sessie-id op dezelfde dag.
+  // Wijzig-/verwijder-knop als er een import (done/metrics) aan deze sessie hangt.
   const fbKeyR = weekId + ':' + di + ':' + sid;
   const hasImportData = !!(state.done && state.done[fbKeyR]) || !!(state.metrics && state.metrics[fbKeyR]);
   const reassignBtn = hasImportData
     ? `<button class="mark-done-btn" onclick="openReassign('${weekId}',${di},'${sid}')" style="background:#EEF2FB;border-color:#378ADD;color:#185FA5">↻ Wijzig sessie-type</button>`
+    : '';
+  const deleteImportBtn = hasImportData
+    ? `<button class="mark-done-btn" onclick="deleteImportedSession('${weekId}',${di},'${sid}')" style="background:#FEE;border-color:#D32F2F;color:#B00020">🗑 Verwijder import</button>`
     : '';
 
   // Klikbare titel als er een Dynamic Triathlete video-link beschikbaar is
@@ -4770,7 +4813,8 @@ function buildSessionDetailHTML(weekId, di, sid) {
       📝 ${hasFb ? 'Bewerk feedback' : 'Feedback toevoegen'}
     </button>
     ${garminBtn}
-    ${reassignBtn}`;
+    ${reassignBtn}
+    ${deleteImportBtn}`;
 }
 
 // Bewaart welke Vandaag-kaarten uitgeklapt zijn, zodat na een save/render
