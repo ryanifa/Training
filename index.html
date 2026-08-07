@@ -3232,7 +3232,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 91;
+const APP_VERSION = 92;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -5911,11 +5911,11 @@ function renderFitItems() {
         '<div class="fit-item-err">❌ ' + escapeHtml(fi.error) + '</div></div>';
     }
     if (fi.status === 'duplicate') {
-      return '<div class="fit-item" style="opacity:0.85;border-left:3px solid #EF9F27"><div class="fit-item-head">' +
+      return '<div class="fit-item" data-testid="fit-item-duplicate" style="opacity:0.85;border-left:3px solid #EF9F27"><div class="fit-item-head">' +
         '<span>' + escapeHtml(fi.file.name) + '</span>' +
         '<button class="fit-item-rm" onclick="removeFitItem(\'' + fi.id + '\')">×</button></div>' +
         '<div class="fit-item-err" style="color:#854F0B">⚠️ ' + escapeHtml(fi.error || 'Al geïmporteerd') + '</div>' +
-        '<button class="modal-btn" style="margin-top:6px;font-size:11px" onclick="forceImportFitItem(\'' + fi.id + '\')">Toch importeren</button></div>';
+        '<button class="modal-btn" data-testid="force-import-btn" style="margin-top:6px;font-size:11px" onclick="forceImportFitItem(\'' + fi.id + '\')">Toch importeren</button></div>';
     }
     const it = fi.item;
     const sessOpts = buildSessieTypeOptions(it._appType, it.sessie_type);
