@@ -3232,7 +3232,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 90;
+const APP_VERSION = 91;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -4793,9 +4793,33 @@ function buildSessionDetailHTML(weekId, di, sid) {
   const garminBtn = garminEligible
     ? `<button class="mark-done-btn" onclick="openWorkout('${sid}',${di})" style="background:#FAEEDA;border-color:#EF9F27;color:#854F0B">🏃 Garmin workout</button>`
     : '';
-  // Wijzig-/verwijder-knop als er een import (done/metrics) aan deze sessie hangt.
+  // Wijzig-/verwijder-knop als er een import (done/metrics/import-move) aan
+  // deze sessie hangt. Ook een leftover move die deze sid op deze dag zet
+  // telt mee — anders kun je niet meer opruimen zodra done/metrics gewist zijn.
   const fbKeyR = weekId + ':' + di + ':' + sid;
-  const hasImportData = !!(state.done && state.done[fbKeyR]) || !!(state.metrics && state.metrics[fbKeyR]);
+  const isoR = isoForWeekDay(weekId, di);
+  const importMoveKey = weekId + ':__import:' + sid + ':' + (isoR || '');
+  let hasMoveToThisDay = false;
+  if (state.moves) {
+    if (state.moves[importMoveKey] === di) hasMoveToThisDay = true;
+    if (!hasMoveToThisDay) {
+      const wkPrefix = weekId + ':';
+      for (const k of Object.keys(state.moves)) {
+        if (!k.startsWith(wkPrefix) || k.includes(':__import:')) continue;
+        const rest = k.slice(wkPrefix.length);
+        const fc = rest.indexOf(':');
+        if (fc < 0) continue;
+        const origDay = rest.slice(0, fc);
+        const movedSid = rest.slice(fc + 1);
+        if (movedSid === sid && state.moves[k] === di && String(origDay) !== String(di)) {
+          hasMoveToThisDay = true; break;
+        }
+      }
+    }
+  }
+  const hasImportData = !!(state.done && state.done[fbKeyR]) ||
+                        !!(state.metrics && state.metrics[fbKeyR]) ||
+                        hasMoveToThisDay;
   const reassignBtn = hasImportData
     ? `<button class="mark-done-btn" onclick="openReassign('${weekId}',${di},'${sid}')" style="background:#EEF2FB;border-color:#378ADD;color:#185FA5">↻ Wijzig sessie-type</button>`
     : '';
