@@ -3232,7 +3232,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 87;
+const APP_VERSION = 88;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -5734,10 +5734,11 @@ function fitToItem(parsed) {
   }
 
   // Auto-detect sessie_type: bekijk de EFFECTIEVE sessies op die dag (incl.
-  // verplaatsingen via state.moves), niet alleen het kale plan. Eerst proberen
-  // we een sport-match (run/bike/swim/str). Lukt dat niet maar staat er
-  // wél iets gepland, pak de eerste als voorstel — gebruiker kan altijd
-  // wijzigen via de dropdown.
+  // verplaatsingen via state.moves), niet alleen het kale plan. Eerst zoeken
+  // we een sport-match op de dag (run/bike/swim/str). Lukt dat niet: zoeken
+  // we in de HELE sessie-bibliotheek naar een sessie van dezelfde discipline
+  // (voorkeur voor _easy varianten als veilige default). Pas als de sport
+  // onbekend is EN er iets gepland staat, pakken we de eerste als voorstel.
   let sessieType = null;
   let autoMatched = false;
   if (isoDate) {
@@ -5747,10 +5748,25 @@ function fitToItem(parsed) {
       const day = w && w.days[wd.dayIndex];
       const sessions = (day && day.sessions) || [];
       if (appType) {
+        // 1) Zelfde discipline op dezelfde dag
         const sportMatch = sessions.filter(sid => SESSIONS[sid] && SESSIONS[sid].type === appType);
         if (sportMatch.length >= 1) { sessieType = sportMatch[0]; autoMatched = true; }
+        // 2) Anders: zoek in de hele bibliotheek een sessie van dezelfde discipline
+        if (!sessieType) {
+          const anySport = Object.keys(SESSIONS).filter(sid => SESSIONS[sid].type === appType);
+          if (anySport.length >= 1) {
+            const preferred = anySport.find(sid => /_easy(_|$)/.test(sid))
+                           || anySport.find(sid => /_rec|_recovery|walk|_z2(_|$)/.test(sid))
+                           || anySport[0];
+            sessieType = preferred;
+            autoMatched = true;
+          }
+        }
       }
-      if (!sessieType && sessions.length > 0) {
+      // 3) Pas terugvallen op "eerste geplande sessie" als we GEEN discipline
+      // hebben (bv. onbekende sport uit de FIT). Anders zouden we een run
+      // importeren als Fiets, wat écht mis is.
+      if (!sessieType && !appType && sessions.length > 0) {
         const first = sessions.find(sid => SESSIONS[sid]);
         if (first) { sessieType = first; autoMatched = true; }
       }
