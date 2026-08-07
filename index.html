@@ -3232,7 +3232,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 89;
+const APP_VERSION = 90;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -4574,11 +4574,28 @@ async function deleteImportedSession(weekId, di, sid) {
   // Bewaar metrics eventjes om de fingerprint eruit te halen voor step 3
   const metricsBlob = state.metrics && state.metrics[key];
   if (metricsBlob) delete state.metrics[key];
-  // 2. __import-moves voor deze sessie op deze dag verwijderen
+  // 2. Alle moves die deze sessie NAAR deze dag hebben gebracht verwijderen.
+  //    Import kan zowel een __import-marker als een gewone move creëren
+  //    (bv. Lange loop stond in plan op zondag, verplaatst naar vrijdag).
   state.moves = state.moves || {};
   const iso = isoForWeekDay(weekId, di);
   Object.keys(state.moves).forEach(k => {
-    if (k === weekId + ':__import:' + sid + ':' + (iso || '')) delete state.moves[k];
+    // Vorm A: w<n>:__import:<sid>:<iso>
+    if (k === weekId + ':__import:' + sid + ':' + (iso || '')) {
+      delete state.moves[k];
+      return;
+    }
+    // Vorm B: w<n>:<origDay>:<sid>  met value = di
+    if (k.startsWith(weekId + ':') && !k.includes(':__import:')) {
+      const rest = k.slice((weekId + ':').length);
+      const firstColon = rest.indexOf(':');
+      if (firstColon < 0) return;
+      const origDay = rest.slice(0, firstColon);
+      const movedSid = rest.slice(firstColon + 1);
+      if (movedSid === sid && state.moves[k] === di && String(origDay) !== String(di)) {
+        delete state.moves[k];
+      }
+    }
   });
   // 3. Fingerprint uit importedFits verwijderen (heuristiek: match op datum + sport).
   //    Zonder de originele FIT kunnen we niet 100% zeker matchen; we halen alle
