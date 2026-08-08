@@ -1936,7 +1936,8 @@ let state = {
   metrics: {},
   strength: [],
   chatMessages: [],
-  importedFits: []
+  importedFits: [],
+  garminReadiness: null  // { date, score, level, factors, updatedAt }
 };
 
 // Bouw runtime week-data uit het verse plan + user overrides
@@ -2021,7 +2022,8 @@ function buildStateBlob() {
     metrics: state.metrics,
     strength: state.strength,
     chatMessages: state.chatMessages,
-    importedFits: state.importedFits
+    importedFits: state.importedFits,
+    garminReadiness: state.garminReadiness
   };
 }
 
@@ -2037,6 +2039,7 @@ function applyStateBlob(saved) {
   if (Array.isArray(saved.strength)) state.strength = saved.strength;
   if (Array.isArray(saved.chatMessages)) state.chatMessages = saved.chatMessages;
   if (Array.isArray(saved.importedFits)) state.importedFits = saved.importedFits;
+  if (saved.garminReadiness && typeof saved.garminReadiness === 'object') state.garminReadiness = saved.garminReadiness;
 
   // Legacy migratie (oude weekData-structuur)
   if (saved.weekData && typeof saved.weekData === 'object') {
@@ -3232,7 +3235,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 93;
+const APP_VERSION = 94;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -4866,6 +4869,102 @@ function onTodayCardToggle(el, key) {
   else delete todayOpenSids[key];
 }
 
+// Trainings-readiness kaart voor Vandaag. Kleurcode: rood <40, oranje 40-70,
+// groen >70. Toont ook geplande sessies voor vandaag + morgen zodat de
+// gebruiker snel kan zien of het advies nodig is.
+function renderReadinessCard(weekId, di) {
+  const r = state.garminReadiness;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const w = getWeekView(weekId);
+  const day = w && w.days[di];
+  const nextDayInfo = getNextDayInfo(weekId, di);
+  const todayPlan = day && day.sessions && day.sessions.length
+    ? day.sessions.map(sid => SESSIONS[sid]?.label || sid).join(' + ') : 'Rust';
+  const tomorrowPlan = nextDayInfo.sessions.length
+    ? nextDayInfo.sessions.map(sid => SESSIONS[sid]?.label || sid).join(' + ') : 'Rust';
+
+  let scoreHtml = '';
+  let borderColor = '#ccc';
+  let bgColor = '#fafafa';
+  let advies = '';
+  if (r && r.score != null && r.date === todayIso) {
+    const s = r.score;
+    if (s < 40) { borderColor = '#d32f2f'; bgColor = '#fef2f2'; advies = '⚠️ Lage readiness — overweeg de intensiteit terug te schroeven.'; }
+    else if (s < 70) { borderColor = '#F57C00'; bgColor = '#fff8e1'; advies = 'Redelijke readiness — plan uitvoeren, maar luister naar je lichaam.'; }
+    else { borderColor = '#2e7d32'; bgColor = '#f5fdf6'; advies = '✅ Goede readiness — plan uitvoeren zoals gepland.'; }
+    scoreHtml = `<div style="display:flex;align-items:center;gap:12px">
+      <div style="font-size:32px;font-weight:bold;color:${borderColor};min-width:60px;text-align:center">${s}</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:bold;color:#333">Training Readiness</div>
+        <div style="font-size:12px;color:#666">${escapeHtml(r.level || '')}${r.updatedAt ? ' · ' + new Date(r.updatedAt).toLocaleTimeString('nl-NL', {hour:'2-digit',minute:'2-digit'}) : ''}</div>
+      </div>
+    </div>`;
+  } else {
+    scoreHtml = `<div style="font-size:12px;color:#888;padding:4px 0">
+      🕓 Nog geen Garmin-readiness voor vandaag (agent draait 2× per dag).
+    </div>`;
+    borderColor = '#bbb'; bgColor = '#f8f8f8';
+    advies = '';
+  }
+
+  return `<div style="background:${bgColor};border-left:4px solid ${borderColor};border-radius:8px;padding:12px 14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.04)">
+    ${scoreHtml}
+    <div style="font-size:12px;color:#555;margin-top:10px;line-height:1.5">
+      <div><strong>Vandaag:</strong> ${escapeHtml(todayPlan)}</div>
+      <div><strong>Morgen:</strong> ${escapeHtml(tomorrowPlan)}</div>
+    </div>
+    ${advies ? `<div style="font-size:12px;margin-top:8px;padding:6px 8px;background:rgba(255,255,255,0.6);border-radius:6px">${advies}</div>` : ''}
+    <button onclick="openReadinessAdvice()" style="margin-top:10px;padding:8px 14px;background:#185FA5;border:none;color:white;border-radius:6px;font-size:13px;font-weight:bold;cursor:pointer">🧠 Vraag advies</button>
+  </div>`;
+}
+
+function getNextDayInfo(weekId, di) {
+  // Als di=6 (zo), pak dan dag 0 van de volgende week
+  let nextWeekId = weekId, nextDi = di + 1;
+  if (nextDi > 6) {
+    const idx = WEEK_META.findIndex(m => m.id === weekId);
+    if (idx >= 0 && idx + 1 < WEEK_META.length) {
+      nextWeekId = WEEK_META[idx + 1].id;
+      nextDi = 0;
+    } else {
+      return { sessions: [] };
+    }
+  }
+  const w = getWeekView(nextWeekId);
+  const d = w && w.days[nextDi];
+  return { sessions: (d && d.sessions) || [], weekId: nextWeekId, di: nextDi };
+}
+
+function openReadinessAdvice() {
+  // Placeholder — advies-modal wordt stap 2. Voor nu: openen coach met
+  // een prefab-vraag zodat gebruiker meteen antwoord krijgt.
+  const r = state.garminReadiness;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const weekId = getCurrentWeekId();
+  const di = getCurrentDayIndex();
+  const w = getWeekView(weekId);
+  const day = w && w.days[di];
+  const nextDayInfo = getNextDayInfo(weekId, di);
+  const todayPlan = day && day.sessions && day.sessions.length
+    ? day.sessions.map(sid => SESSIONS[sid]?.label || sid).join(' + ') : 'Rust';
+  const tomorrowPlan = nextDayInfo.sessions.length
+    ? nextDayInfo.sessions.map(sid => SESSIONS[sid]?.label || sid).join(' + ') : 'Rust';
+
+  const readinessLine = r && r.score != null && r.date === todayIso
+    ? `Mijn Training Readiness van vandaag is ${r.score}${r.level ? ' (' + r.level + ')' : ''}.`
+    : 'Ik heb nog geen Training Readiness score voor vandaag.';
+
+  const prefill = readinessLine + `\n\nVandaag gepland: ${todayPlan}\nMorgen gepland: ${tomorrowPlan}\n\nWat is jouw advies — moet ik het plan uitvoeren of iets aanpassen?`;
+
+  // Switch naar Coach-tab en vul input voor
+  const coachBtn = document.querySelector('.nav-btn[onclick*="\'coach\'"]');
+  if (coachBtn) showPage('coach', coachBtn);
+  setTimeout(() => {
+    const input = document.getElementById('coachInput');
+    if (input) { input.value = prefill; input.focus(); }
+  }, 100);
+}
+
 function renderToday() {
   const container = document.getElementById('todayContent');
   if (!container) return;
@@ -4891,6 +4990,8 @@ function renderToday() {
       </button>
     </div>
   `;
+
+  html += renderReadinessCard(weekId, di);
 
   if (!day.sessions || day.sessions.length === 0) {
     html += `<div class="today-empty">${isRest ? '🛏 Bewuste rustdag' : 'Geen training gepland — rust'}</div>`;
