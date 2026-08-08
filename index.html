@@ -3232,7 +3232,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 92;
+const APP_VERSION = 93;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -5781,8 +5781,10 @@ function fitToItem(parsed) {
 
   const sportMap = {
     running: 'run', trail_running: 'run', treadmill_running: 'run',
+    walking: 'run', hiking: 'run', casual_walking: 'run', speed_walking: 'run',
     cycling: 'bike', road_biking: 'bike', mountain_biking: 'bike',
     gravel_cycling: 'bike', indoor_cycling: 'bike', cyclocross: 'bike',
+    e_bike_fitness: 'bike', e_biking: 'bike',
     swimming: 'swim', lap_swimming: 'swim', open_water_swimming: 'swim',
     fitness_equipment: 'str', strength_training: 'str', weight_training: 'str'
   };
@@ -5840,7 +5842,13 @@ function fitToItem(parsed) {
         if (!sessieType) {
           const anySport = Object.keys(SESSIONS).filter(sid => SESSIONS[sid].type === appType);
           if (anySport.length >= 1) {
-            const preferred = anySport.find(sid => /_easy(_|$)/.test(sid))
+            // Wandel-detectie: sport uit de FIT ("walking"/"hiking") of
+            // langzaam tempo (>7 min/km) → prefereer walk_* sessies
+            const isWalk = /walk|hik/i.test(sport || '')
+                       || (m.pace_gem && /^([7-9]|1\d):/.test(m.pace_gem))
+                       || (m.hr_gem && m.hr_gem < 115);
+            const preferred = (isWalk && anySport.find(sid => /^walk/.test(sid)))
+                           || anySport.find(sid => /_easy(_|$)/.test(sid))
                            || anySport.find(sid => /_rec|_recovery|walk|_z2(_|$)/.test(sid))
                            || anySport[0];
             sessieType = preferred;
