@@ -3261,7 +3261,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 96;
+const APP_VERSION = 97;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -6416,7 +6416,23 @@ function getOriginalDay(weekId, sid) {
 
 // Verplaats sid van fromDay naar toDay; werkt state.moves bij
 function applyMove(sid, fromDay, toDay) {
-  const origDay = getOriginalDay(activeWeek, sid);
+  // Tel hoe vaak sid in het weekplan voorkomt. Bij >=2 instanties gebruiken
+  // we fromDay als anker in de move-key: anders zou getOriginalDay altijd de
+  // eerste plan-dag teruggeven en alle instanties op één move-key collapsen,
+  // waardoor een move op instantie 2 in werkelijkheid instantie 1 zou verplaatsen.
+  const plan = WEEKS[activeWeek];
+  let planCount = 0;
+  let singleOrig = -1;
+  if (plan && plan.days) {
+    for (let di = 0; di < plan.days.length; di++) {
+      if (plan.days[di].sessions.includes(sid)) {
+        planCount++;
+        if (singleOrig < 0) singleOrig = di;
+      }
+    }
+  }
+  const origDay = planCount >= 2 ? fromDay : (planCount === 1 ? singleOrig : -1);
+
   // Done-key updaten naar nieuwe dag
   const oldDoneKey = activeWeek + ':' + fromDay + ':' + sid;
   const newDoneKey = activeWeek + ':' + toDay + ':' + sid;
@@ -6430,16 +6446,14 @@ function applyMove(sid, fromDay, toDay) {
     state.missed[newDoneKey] = true;
   }
   // Feedback-key updaten naar nieuwe dag
-  const oldFbKey = activeWeek + ':' + fromDay + ':' + sid;
-  const newFbKey = activeWeek + ':' + toDay + ':' + sid;
-  if (state.feedback[oldFbKey]) {
-    state.feedback[newFbKey] = state.feedback[oldFbKey];
-    delete state.feedback[oldFbKey];
+  if (state.feedback[oldDoneKey]) {
+    state.feedback[newDoneKey] = state.feedback[oldDoneKey];
+    delete state.feedback[oldDoneKey];
   }
-  // Move-key altijd op origDay, niet fromDay
+  // Move-key: origDay als anker (zie boven), of fromDay als sid niet in plan zit.
   const moveKey = activeWeek + ':' + (origDay >= 0 ? origDay : fromDay) + ':' + sid;
-  if (origDay === toDay) {
-    // Terug naar oorspronkelijke dag = move ongedaan maken
+  if (origDay >= 0 && origDay === toDay) {
+    // Terug naar oorspronkelijke plan-dag = move opheffen (alleen bij planCount==1)
     delete state.moves[moveKey];
   } else if (origDay >= 0) {
     state.moves[moveKey] = toDay;
