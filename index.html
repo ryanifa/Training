@@ -3235,7 +3235,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 94;
+const APP_VERSION = 95;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -6197,6 +6197,20 @@ async function importSingle(item) {
   // Geval 1: sessie staat al op deze dag → niets te doen qua plan
   if (currentSessionsOnDay.includes(item.sessie_type)) {
     return await applyImportData(wd.weekId, wd.dayIndex, item, 'matched');
+  }
+
+  // Geval 1b: sessie staat via een user-move al ergens ANDERS deze week.
+  // Respecteer dat: schrijf metrics/done op die dag, verplaats NIET terug
+  // naar de FIT-datum (anders overschrijven we handmatige verplaatsing).
+  let userMovedToDay = -1;
+  for (let di = 0; di < currentView.days.length; di++) {
+    if (di !== wd.dayIndex && currentView.days[di].sessions.includes(item.sessie_type)) {
+      userMovedToDay = di;
+      break;
+    }
+  }
+  if (userMovedToDay >= 0) {
+    return await applyImportData(wd.weekId, userMovedToDay, item, 'user-moved');
   }
 
   // Geval 2: sessie zit elders in plan → sessie verplaatsen naar deze dag
