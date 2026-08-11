@@ -939,6 +939,11 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
       <button class="modal-close" onclick="closeRestoreFromJson()">×</button>
     </div>
     <div class="modal-body">
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <button class="modal-btn" onclick="document.getElementById('restoreJsonFile').click()">📁 Kies bestand…</button>
+        <input type="file" id="restoreJsonFile" accept=".json,application/json" style="display:none" onchange="loadRestoreJsonFile(event)">
+        <span class="modal-meta" id="restoreJsonFileName" style="align-self:center;color:#666"></span>
+      </div>
       <textarea id="restoreJsonText" class="modal-textarea" placeholder='{"_meta":{...},"done":{...},"metrics":{...},...}' style="font-family:monospace;font-size:11px;min-height:240px"></textarea>
       <div class="modal-meta" id="restoreJsonPreview" style="margin-top:6px"></div>
       <div class="modal-meta" id="restoreJsonMsg" style="margin-top:6px;min-height:16px"></div>
@@ -2511,7 +2516,28 @@ function openRestoreFromJson() {
   document.getElementById('restoreJsonText').value = '';
   document.getElementById('restoreJsonPreview').textContent = '';
   document.getElementById('restoreJsonMsg').textContent = '';
+  const fnEl = document.getElementById('restoreJsonFileName');
+  if (fnEl) fnEl.textContent = '';
+  const fEl = document.getElementById('restoreJsonFile');
+  if (fEl) fEl.value = '';
   document.getElementById('restoreJsonModal').classList.add('active');
+}
+// Laad een JSON-bestand van disk in het textarea (voorkomt copy-paste hoop werk)
+function loadRestoreJsonFile(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  const fnEl = document.getElementById('restoreJsonFileName');
+  if (fnEl) fnEl.textContent = '📄 ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('restoreJsonText').value = String(e.target.result || '');
+    // Direct controleren
+    try { restoreJsonPreviewNow(); } catch (_) {}
+  };
+  reader.onerror = () => {
+    document.getElementById('restoreJsonMsg').textContent = '❌ Kon bestand niet lezen: ' + (reader.error && reader.error.message || 'onbekende fout');
+  };
+  reader.readAsText(file);
 }
 function closeRestoreFromJson() {
   document.getElementById('restoreJsonModal').classList.remove('active');
@@ -3235,7 +3261,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 95;
+const APP_VERSION = 96;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
