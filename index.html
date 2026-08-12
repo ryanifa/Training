@@ -3261,7 +3261,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 97;
+const APP_VERSION = 98;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -6416,22 +6416,24 @@ function getOriginalDay(weekId, sid) {
 
 // Verplaats sid van fromDay naar toDay; werkt state.moves bij
 function applyMove(sid, fromDay, toDay) {
-  // Tel hoe vaak sid in het weekplan voorkomt. Bij >=2 instanties gebruiken
-  // we fromDay als anker in de move-key: anders zou getOriginalDay altijd de
-  // eerste plan-dag teruggeven en alle instanties op één move-key collapsen,
-  // waardoor een move op instantie 2 in werkelijkheid instantie 1 zou verplaatsen.
-  const plan = WEEKS[activeWeek];
-  let planCount = 0;
-  let singleOrig = -1;
-  if (plan && plan.days) {
-    for (let di = 0; di < plan.days.length; di++) {
-      if (plan.days[di].sessions.includes(sid)) {
-        planCount++;
-        if (singleOrig < 0) singleOrig = di;
+  // Tel hoe vaak sid in de HUIDIGE view (plan + reeds toegepaste moves)
+  // voorkomt. Bij >=2 instanties gebruiken we fromDay als anker in de
+  // move-key. Anders zou getOriginalDay altijd één "originele" dag
+  // teruggeven en zouden alle instanties op één move-key collapsen — de
+  // move op instantie 2 zou dan feitelijk instantie 1 verplaatsen.
+  // We kijken naar de view (niet alleen plan) omdat de 2e instantie ook uit
+  // een reassign of FIT-import (__import-move) kan komen.
+  let currentCount = 0;
+  try {
+    const view = getWeekView(activeWeek);
+    if (view && view.days) {
+      for (let di = 0; di < view.days.length; di++) {
+        if (view.days[di].sessions.includes(sid)) currentCount++;
       }
     }
-  }
-  const origDay = planCount >= 2 ? fromDay : (planCount === 1 ? singleOrig : -1);
+  } catch (_) {}
+  const planOrig = getOriginalDay(activeWeek, sid);
+  const origDay = currentCount >= 2 ? fromDay : planOrig;
 
   // Done-key updaten naar nieuwe dag
   const oldDoneKey = activeWeek + ':' + fromDay + ':' + sid;
