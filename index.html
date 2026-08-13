@@ -1942,7 +1942,8 @@ let state = {
   strength: [],
   chatMessages: [],
   importedFits: [],
-  garminReadiness: null  // { date, score, level, factors, updatedAt }
+  garminReadiness: null,  // { date, score, level, factors, updatedAt } — laatste meting
+  garminReadinessHistory: []  // [{ date, score, level, timeSlot: 'morning'|'evening', updatedAt }] — last few days
 };
 
 // Bouw runtime week-data uit het verse plan + user overrides
@@ -2028,7 +2029,8 @@ function buildStateBlob() {
     strength: state.strength,
     chatMessages: state.chatMessages,
     importedFits: state.importedFits,
-    garminReadiness: state.garminReadiness
+    garminReadiness: state.garminReadiness,
+    garminReadinessHistory: state.garminReadinessHistory
   };
 }
 
@@ -2045,6 +2047,7 @@ function applyStateBlob(saved) {
   if (Array.isArray(saved.chatMessages)) state.chatMessages = saved.chatMessages;
   if (Array.isArray(saved.importedFits)) state.importedFits = saved.importedFits;
   if (saved.garminReadiness && typeof saved.garminReadiness === 'object') state.garminReadiness = saved.garminReadiness;
+  if (Array.isArray(saved.garminReadinessHistory)) state.garminReadinessHistory = saved.garminReadinessHistory;
 
   // Legacy migratie (oude weekData-structuur)
   if (saved.weekData && typeof saved.weekData === 'object') {
@@ -3261,7 +3264,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 100;
+const APP_VERSION = 101;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3905,7 +3908,9 @@ function buildCoachSystemPrompt() {
     skips: state.skips || {},
     feedback: state.feedback || {},
     metrics: state.metrics || {},
-    strength: state.strength || []
+    strength: state.strength || [],
+    garminReadiness: state.garminReadiness || null,
+    garminReadinessHistory: Array.isArray(state.garminReadinessHistory) ? state.garminReadinessHistory : []
   };
 
   const staticBlock = `Je bent een persoonlijke triathlon/duursport-coach voor Ryan Douglas.
@@ -3933,6 +3938,8 @@ State-conventies (zijn werkelijke acties t.o.v. het plan):
 - feedback: vrije-tekst notities per sessie { text, updatedAt }
 - metrics: werkelijke meetwaarden per sessie (duur_min, afstand_km, hr_gem, etc.)
 - strength: array van krachtsessies met { date, exercise, sets:[{reps,weight,rpe}], note }
+- garminReadiness: laatste Garmin Training Readiness meting { date, score (0-100), level (POOR/LOW/MEDIUM/HIGH), updatedAt }. Hoger = beter uitgerust.
+- garminReadinessHistory: recente Training Readiness metingen (2x per dag: 'morning' rond 7u = herstel-status na de nacht, 'evening' rond 23u = eind-van-dag na trainingsbelasting). Structuur: [{ date, score, level, timeSlot, updatedAt }]. Analyseer bij lage of dalende scores of dat verklaard wordt door zware trainingen die dag/de dag ervoor (kijk in metrics/done). Als een lage ochtend-score volgt op een zware trainingsdag ervoor → onvoldoende herstel, adviseer rustdag of Z2. Als lage avond-score maar geen zware training → mogelijk slaap/stress/ziekte. Meld dit expliciet in adviezen.
 
 Antwoord beknopt en concreet in het Nederlands. Combineer het plan (wat gepland stond, uit het weekschema + sessiebibliotheek) met wat hij echt deed (done/missed/feedback/metrics). Geef cijfers waar je ze hebt. Wees eerlijk over discipline-gaten of trends.
 
