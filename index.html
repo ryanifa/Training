@@ -3261,7 +3261,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 99;
+const APP_VERSION = 100;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -6415,68 +6415,71 @@ function getOriginalDay(weekId, sid) {
 }
 
 // Verplaats sid van fromDay naar toDay; werkt state.moves bij.
-// Model: elke zichtbare instantie van een sid op een dag komt van precies één
-// bron — (a) plan-entry, (b) plan-move key `wk:origDay:sid=di`, of (c) import-
-// move key `wk:__import:sid:datum=di`. Bij een move zoeken we welke bron de
-// sid op fromDay heeft geplaatst en updaten DIE, zodat we nooit concurrerende
-// keys schrijven (dat was de v98-bug: een w:2:sid=3 schrijven terwijl er ook
-// een __import:sid:datum=2 stond → bij render voegde __import de sid weer toe
-// aan fromDay = pill springt terug).
+// Model: elke zichtbare instantie van een sid op een dag komt van één of meer
+// bronnen — (a) plan-entry, (b) plan-move key `wk:origDay:sid=di`, of
+// (c) import-move key `wk:__import:sid:datum=di`. Meerdere bronnen kunnen
+// naar dezelfde dag wijzen; dedup in getWeekView toont dan één pill.
+// Bij een move updaten we ALLE bronnen die naar fromDay wijzen, anders blijft
+// er een bron de sid opnieuw op fromDay zetten bij render = pill "verdwijnt"
+// óf duplikeert.
 function applyMove(sid, fromDay, toDay) {
   const wk = activeWeek;
 
-  // Done/missed/feedback re-key van fromDay naar toDay
+  // Done/missed/feedback re-key
   const oldK = wk + ':' + fromDay + ':' + sid;
   const newK = wk + ':' + toDay + ':' + sid;
   if (state.done[oldK])     { delete state.done[oldK];     state.done[newK] = true; }
   if (state.missed[oldK])   { delete state.missed[oldK];   state.missed[newK] = true; }
   if (state.feedback[oldK]) { state.feedback[newK] = state.feedback[oldK]; delete state.feedback[oldK]; }
 
-  // Zoek de move-key die deze sid op fromDay heeft gezet.
-  // Prioriteit: __import-move (specifiekst) > plan-move.
-  let sourceKey = null;
-  let sourceIsImport = false;
+  // Verzamel ALLE move-keys die deze sid op fromDay hebben gezet.
+  const importPrefix = wk + ':__import:';
+  const toUpdate = [];
   for (const k of Object.keys(state.moves)) {
     if (state.moves[k] !== fromDay) continue;
-    const parts = k.split(':');
-    if (parts[0] !== wk) continue;
-    if (parts[1] === '__import') {
-      // vorm: wk:__import:<sid>:<datum> — sid kan ':' bevatten
-      if (parts.slice(2, -1).join(':') === sid) {
-        sourceKey = k; sourceIsImport = true; break;
-      }
+    if (k.startsWith(importPrefix)) {
+      // vorm: wk:__import:<sid>:<datum>
+      const remainder = k.slice(importPrefix.length);
+      const lastColon = remainder.lastIndexOf(':');
+      const foundSid = lastColon >= 0 ? remainder.slice(0, lastColon) : remainder;
+      if (foundSid === sid) toUpdate.push({ key: k, isImport: true });
     } else {
       // vorm: wk:<origDay>:<sid>
+      const parts = k.split(':');
+      if (parts[0] !== wk) continue;
       const origDay = parseInt(parts[1], 10);
       if (!isNaN(origDay) && parts.slice(2).join(':') === sid) {
-        sourceKey = k; sourceIsImport = false;
-        // niet break — __import heeft voorrang; blijf zoeken
+        toUpdate.push({ key: k, isImport: false, origDay });
       }
     }
   }
 
-  if (sourceKey) {
-    if (!sourceIsImport) {
-      // Plan-move: als toDay gelijk is aan origDay in de key, verwijder de move
-      // (terug naar oorspronkelijke plan-dag = geen move meer nodig).
-      const origDay = parseInt(sourceKey.split(':')[1], 10);
-      if (origDay === toDay) { delete state.moves[sourceKey]; return; }
-    }
-    state.moves[sourceKey] = toDay;
-    return;
-  }
-
-  // Geen bestaande move gevonden — sid staat op fromDay volgens het plan zelf.
+  // Zit sid ook via het plan zelf op fromDay?
   const plan = WEEKS[wk];
-  const planHasOnFrom = plan && plan.days[fromDay] && plan.days[fromDay].sessions.includes(sid);
-  if (planHasOnFrom) {
-    if (fromDay === toDay) return;
-    state.moves[wk + ':' + fromDay + ':' + sid] = toDay;
-    return;
+  const planHasOnFrom = !!(plan && plan.days[fromDay] && plan.days[fromDay].sessions.includes(sid));
+
+  // Update elke bron
+  for (const src of toUpdate) {
+    if (!src.isImport && src.origDay === toDay) {
+      // Plan-move keert terug naar oorsprong → verwijder de move
+      delete state.moves[src.key];
+    } else {
+      state.moves[src.key] = toDay;
+    }
   }
 
-  // Fallback: sid staat op fromDay maar geen bron gevonden (edge case).
-  if (fromDay !== toDay) {
+  // Als sid op fromDay via het plan staat en er geen plan-move voor fromDay
+  // bestaat, is er een nieuwe move nodig (anders komt hij op de volgende
+  // render terug op fromDay).
+  if (planHasOnFrom) {
+    const hasPlanMoveFromFrom = toUpdate.some(s => !s.isImport && s.origDay === fromDay);
+    if (!hasPlanMoveFromFrom && fromDay !== toDay) {
+      state.moves[wk + ':' + fromDay + ':' + sid] = toDay;
+    }
+  }
+
+  // Fallback: geen bron gevonden én geen plan → schrijf toch een move (edge case)
+  if (toUpdate.length === 0 && !planHasOnFrom && fromDay !== toDay) {
     state.moves[wk + ':' + fromDay + ':' + sid] = toDay;
   }
 }
