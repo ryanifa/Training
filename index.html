@@ -3267,7 +3267,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 103;
+const APP_VERSION = 104;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -6253,13 +6253,15 @@ async function importSingle(item) {
     return await applyImportData(wd.weekId, wd.dayIndex, item, 'matched');
   }
 
-  // Geval 1b: sessie staat via een user-move al ergens ANDERS deze week.
+  // Geval 1b: sessie staat via een ECHTE user-move elders deze week.
   // Respecteer dat: schrijf metrics/done op die dag, verplaats NIET terug
-  // naar de FIT-datum (anders overschrijven we handmatige verplaatsing).
+  // naar de FIT-datum. Let op: telt NIET als user-move als de sessie gewoon
+  // op de originele planpositie staat (dat is Geval 2).
+  const origDayInPlan = planWeek ? planWeek.days.findIndex(d => d.sessions.includes(item.sessie_type)) : -1;
   let userMovedToDay = -1;
   for (let di = 0; di < currentView.days.length; di++) {
     if (di !== wd.dayIndex && currentView.days[di].sessions.includes(item.sessie_type)) {
-      userMovedToDay = di;
+      if (origDayInPlan < 0 || di !== origDayInPlan) userMovedToDay = di;
       break;
     }
   }
@@ -6267,15 +6269,13 @@ async function importSingle(item) {
     return await applyImportData(wd.weekId, userMovedToDay, item, 'user-moved');
   }
 
-  // Geval 2: sessie zit elders in plan → sessie verplaatsen naar deze dag
-  let origDay = -1;
-  for (let di = 0; di < planWeek.days.length; di++) {
-    if (planWeek.days[di].sessions.includes(item.sessie_type)) {
-      origDay = di;
-      break;
-    }
-  }
+  // Geval 2: sessie zit elders in plan → sessie verplaatsen naar de FIT-datum
+  let origDay = origDayInPlan;
   if (origDay >= 0) {
+    // Ruim eventuele stale done/missed op van de originele dag (bv. eerdere foutieve import)
+    const staleKey = wd.weekId + ':' + origDay + ':' + item.sessie_type;
+    delete state.done[staleKey];
+    delete state.missed[staleKey];
     state.moves[wd.weekId + ':' + origDay + ':' + item.sessie_type] = wd.dayIndex;
     return await applyImportData(wd.weekId, wd.dayIndex, item, 'moved');
   }
