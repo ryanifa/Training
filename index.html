@@ -3264,7 +3264,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 101;
+const APP_VERSION = 102;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -4437,6 +4437,23 @@ function renderWeek(key) {
       </div>`;
     }).join('');
 
+    // Orphaned done-sessies: staan in state.done voor deze dag maar niet meer in het plan.
+    // Toon ze als grijze "✓ naam (plan gewijzigd)" pills zodat ze niet onzichtbaar verdwijnen.
+    const orphanPrefix = activeWeek + ':' + di + ':';
+    const orphanHtml = Object.keys(state.done)
+      .filter(k => k.startsWith(orphanPrefix) && state.done[k] === true)
+      .map(k => k.slice(orphanPrefix.length))
+      .filter(sid => !day.sessions.includes(sid))
+      .map(sid => {
+        const sess = SESSIONS[sid];
+        const lbl = sess ? sess.label : sid;
+        return `<div class="session-pill done" style="opacity:0.45;border-style:dashed;cursor:default" title="Afgerond — sessie niet meer in huidig plan voor deze dag">
+          <span class="pill-done">✅</span>
+          <div class="pill-name" style="text-decoration:line-through">${escapeHtml(lbl)}</div>
+          <div class="pill-meta" style="font-size:10px;color:#888">plan gewijzigd</div>
+        </div>`;
+      }).join('');
+
     const isMoveTarget = moveMode && moveMode.fromDay !== di;
     const isDayRest = state.rest[activeWeek + ':' + di] === true;
     const restBtn = `<button class="day-rest-btn${isDayRest ? ' active' : ''}" onclick="event.stopPropagation(); toggleDayRest(${di})" title="${isDayRest ? 'Rustdag aan — klik om uit te zetten' : 'Markeer als bewuste rustdag'}">🛏</button>`;
@@ -4452,7 +4469,7 @@ function renderWeek(key) {
         <div class="day-col-date">${day.date}${restBtn}</div>
       </div>
       <div class="day-col-body">
-        ${pillsHtml || `<div class="empty-day">${emptyLabel}</div>`}
+        ${pillsHtml || `<div class="empty-day">${emptyLabel}</div>`}${orphanHtml}
       </div>
     </div>`;
   }).join('');
