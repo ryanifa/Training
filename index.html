@@ -150,6 +150,9 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 .pill-meta { font-size: 11px; opacity: 0.8; }
 .pill-done { position: absolute; top: 4px; right: 6px; font-size: 13px; }
 .pill-missed { position: absolute; top: 4px; right: 6px; font-size: 13px; }
+.pill-delete { position: absolute; bottom: 2px; right: 4px; font-size: 10px; cursor: pointer; opacity: 0; transition: opacity 0.15s; color: #777; background: none; border: none; padding: 0 2px; line-height: 1; }
+.session-pill:hover .pill-delete { opacity: 0.6; }
+.pill-delete:hover { opacity: 1 !important; color: #c62828; }
 
 .p-swim { background: #E1F5EE; border-color: #1D9E75; color: #0F6E56; }
 .p-bike { background: #E6F1FB; border-color: #378ADD; color: #185FA5; }
@@ -3264,7 +3267,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 102;
+const APP_VERSION = 103;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -4434,6 +4437,7 @@ function renderWeek(key) {
         ${isDone ? '<span class="pill-done">✅</span>' : (isMissed ? '<span class="pill-missed" title="Gemist">🚫</span>' : (isDayRestForPill ? '<span class="pill-missed" title="Bewuste rustdag">🛏</span>' : ''))}
         <div class="pill-name">${sess.label}</div>
         <div class="pill-meta">${displayDur}</div>
+        <button class="pill-delete" onclick="event.stopPropagation(); deleteSessionFromDay('${sid}',${di})" title="Verwijder sessie van deze dag">×</button>
       </div>`;
     }).join('');
 
@@ -5927,7 +5931,7 @@ function fitToItem(parsed) {
   let isoDate = null;
   if (startTime) {
     const d = new Date(startTime);
-    if (!isNaN(d)) isoDate = d.toISOString().slice(0, 10);
+    if (!isNaN(d)) isoDate = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
 
   const sportMap = {
@@ -6352,6 +6356,41 @@ function setImportMsg(msg, type) {
   const el = document.getElementById('importMeta');
   el.textContent = msg;
   el.style.color = type === 'err' ? '#d32f2f' : (type === 'ok' ? '#0F6E56' : '#888');
+}
+
+async function deleteSessionFromDay(sid, di) {
+  const weekId = activeWeek;
+  const planWeek = WEEKS[weekId];
+  const key = weekId + ':' + di + ':' + sid;
+
+  // Vind de oorspronkelijke dag in het plan
+  let origDay = -1;
+  if (planWeek) {
+    for (let d = 0; d < planWeek.days.length; d++) {
+      if (planWeek.days[d].sessions.includes(sid)) { origDay = d; break; }
+    }
+  }
+
+  if (origDay >= 0) {
+    // Sessie zit in het plan → overslaan via skip
+    state.skips = state.skips || {};
+    state.skips[weekId + ':' + origDay + ':' + sid] = true;
+    delete state.moves[weekId + ':' + origDay + ':' + sid];
+  } else {
+    // Sessie via __import toegevoegd → verwijder de import-move
+    Object.keys(state.moves).forEach(k => {
+      if (k.startsWith(weekId + ':__import:' + sid + ':')) delete state.moves[k];
+    });
+  }
+
+  // Opruimen sessie-data voor deze dag
+  delete state.done[key];
+  delete state.missed[key];
+  delete state.feedback[key];
+  delete state.metrics[key];
+
+  await saveState();
+  renderWeek(weekId);
 }
 
 async function toggleDone(sid, di) {
