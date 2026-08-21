@@ -3267,7 +3267,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 104;
+const APP_VERSION = 105;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -6011,13 +6011,9 @@ function fitToItem(parsed) {
           }
         }
       }
-      // 3) Pas terugvallen op "eerste geplande sessie" als we GEEN discipline
-      // hebben (bv. onbekende sport uit de FIT). Anders zouden we een run
-      // importeren als Fiets, wat écht mis is.
-      if (!sessieType && !appType && sessions.length > 0) {
-        const first = sessions.find(sid => SESSIONS[sid]);
-        if (first) { sessieType = first; autoMatched = true; }
-      }
+      // Geen discipline-onbekend-fallback: als we het sport-type niet kennen,
+      // kiezen we NOOIT automatisch de eerste geplande sessie (dat kan een
+      // fietstraining zijn terwijl je gelopen hebt). Gebruiker kiest handmatig.
     }
   }
 
@@ -6267,17 +6263,6 @@ async function importSingle(item) {
   }
   if (userMovedToDay >= 0) {
     return await applyImportData(wd.weekId, userMovedToDay, item, 'user-moved');
-  }
-
-  // Geval 2: sessie zit elders in plan → sessie verplaatsen naar de FIT-datum
-  let origDay = origDayInPlan;
-  if (origDay >= 0) {
-    // Ruim eventuele stale done/missed op van de originele dag (bv. eerdere foutieve import)
-    const staleKey = wd.weekId + ':' + origDay + ':' + item.sessie_type;
-    delete state.done[staleKey];
-    delete state.missed[staleKey];
-    state.moves[wd.weekId + ':' + origDay + ':' + item.sessie_type] = wd.dayIndex;
-    return await applyImportData(wd.weekId, wd.dayIndex, item, 'moved');
   }
 
   // Geval 3: mismatch — sessie is van een ander type dan wat op die dag stond
