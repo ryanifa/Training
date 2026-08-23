@@ -153,6 +153,17 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 .pill-delete { position: absolute; bottom: 2px; right: 4px; font-size: 10px; cursor: pointer; opacity: 0; transition: opacity 0.15s; color: #777; background: none; border: none; padding: 0 2px; line-height: 1; }
 .session-pill:hover .pill-delete { opacity: 0.6; }
 .pill-delete:hover { opacity: 1 !important; color: #c62828; }
+.activity-section { margin-top: 4px; border-top: 1px dashed #ccc; padding-top: 4px; }
+.activity-pill { border-radius: 6px; padding: 5px 8px; margin-bottom: 4px; font-size: 11px; border-left: 3px solid #555; background: #f5f5f5; color: #333; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .activity-pill { background: #2a2a2a; color: #ddd; border-color: #888; } :root:not([data-theme="light"]) .activity-section { border-color: #444; } }
+:root[data-theme="dark"] .activity-pill { background: #2a2a2a; color: #ddd; border-color: #888; }
+:root[data-theme="dark"] .activity-section { border-color: #444; }
+.activity-pill-sport { font-weight: bold; margin-bottom: 2px; }
+.activity-pill-metrics { font-size: 10px; opacity: 0.8; }
+.a-run { border-color: #E8532A; }
+.a-bike { border-color: #378ADD; }
+.a-swim { border-color: #1D9E75; }
+.a-str { border-color: #9C68C6; }
 
 .p-swim { background: #E1F5EE; border-color: #1D9E75; color: #0F6E56; }
 .p-bike { background: #E6F1FB; border-color: #378ADD; color: #185FA5; }
@@ -1945,6 +1956,7 @@ let state = {
   strength: [],
   chatMessages: [],
   importedFits: [],
+  activities: [],          // [{ id, date, sport, sportLabel, metrics, note }] — Garmin-activiteiten op uitvoerdag
   garminReadiness: null,  // { date, score, level, factors, updatedAt } — laatste meting
   garminReadinessHistory: []  // [{ date, score, level, timeSlot: 'morning'|'evening', updatedAt }] — last few days
 };
@@ -2032,6 +2044,7 @@ function buildStateBlob() {
     strength: state.strength,
     chatMessages: state.chatMessages,
     importedFits: state.importedFits,
+    activities: state.activities,
     garminReadiness: state.garminReadiness,
     garminReadinessHistory: state.garminReadinessHistory
   };
@@ -2049,6 +2062,7 @@ function applyStateBlob(saved) {
   if (Array.isArray(saved.strength)) state.strength = saved.strength;
   if (Array.isArray(saved.chatMessages)) state.chatMessages = saved.chatMessages;
   if (Array.isArray(saved.importedFits)) state.importedFits = saved.importedFits;
+  if (Array.isArray(saved.activities)) state.activities = saved.activities;
   if (saved.garminReadiness && typeof saved.garminReadiness === 'object') state.garminReadiness = saved.garminReadiness;
   if (Array.isArray(saved.garminReadinessHistory)) state.garminReadinessHistory = saved.garminReadinessHistory;
 
@@ -3267,7 +3281,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 105;
+const APP_VERSION = 106;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3903,15 +3917,21 @@ function normalizeAllSessions(plan) {
 function buildCoachSystemPrompt() {
   const today = new Date().toISOString().slice(0, 10);
   const plan = buildPlanContext();
+  // Activiteiten gegroepeerd per week voor leesbaarheid
+  const activitiesByWeek = {};
+  (state.activities || []).forEach(a => {
+    const wd = findWeekAndDay(a.date);
+    const wk = wd ? wd.weekId : 'buiten-seizoen';
+    if (!activitiesByWeek[wk]) activitiesByWeek[wk] = [];
+    activitiesByWeek[wk].push(a);
+  });
   const stateCtx = {
-    done: state.done || {},
-    missed: state.missed || {},
-    rest: state.rest || {},
-    moves: state.moves || {},
-    skips: state.skips || {},
-    feedback: state.feedback || {},
-    metrics: state.metrics || {},
-    strength: state.strength || [],
+    garmin_activiteiten: activitiesByWeek,
+    rustdagen: state.rest || {},
+    verplaatsingen: state.moves || {},
+    overgeslagen: state.skips || {},
+    notities: state.feedback || {},
+    kracht: state.strength || [],
     garminReadiness: state.garminReadiness || null,
     garminReadinessHistory: Array.isArray(state.garminReadinessHistory) ? state.garminReadinessHistory : []
   };
@@ -3932,19 +3952,17 @@ ${JSON.stringify(plan.sessions)}
 WEEKSCHEMA — weekId → { label, start(=maandag), dagen{ ma..zo → [sessionId's] } }. Dit is het ORIGINELE plan vóór verplaatsingen/vervangingen:
 ${JSON.stringify(plan.schema)}
 
-State-conventies (zijn werkelijke acties t.o.v. het plan):
-- done: { "weekId:dayIndex:sessionId": true } voltooide sessies (dayIndex 0=ma..6=zo)
-- missed: gemiste sessies (zelfde sleutel-structuur)
-- rest: { "weekId:dayIndex": true } BEWUSTE rustdag (herstel/preventie). Geplande sessies hier NIET als gemist tellen — bewuste keuze, geen discipline-gat.
-- moves: { "weekId:fromDay:sessionId": toDay } sessie verplaatst naar andere dag binnen de week
-- skips: sessies vervangen door iets anders
-- feedback: vrije-tekst notities per sessie { text, updatedAt }
-- metrics: werkelijke meetwaarden per sessie (duur_min, afstand_km, hr_gem, etc.)
-- strength: array van krachtsessies met { date, exercise, sets:[{reps,weight,rpe}], note }
-- garminReadiness: laatste Garmin Training Readiness meting { date, score (0-100), level (POOR/LOW/MEDIUM/HIGH), updatedAt }. Hoger = beter uitgerust.
-- garminReadinessHistory: recente Training Readiness metingen (2x per dag: 'morning' rond 7u = herstel-status na de nacht, 'evening' rond 23u = eind-van-dag na trainingsbelasting). Structuur: [{ date, score, level, timeSlot, updatedAt }]. Analyseer bij lage of dalende scores of dat verklaard wordt door zware trainingen die dag/de dag ervoor (kijk in metrics/done). Als een lage ochtend-score volgt op een zware trainingsdag ervoor → onvoldoende herstel, adviseer rustdag of Z2. Als lage avond-score maar geen zware training → mogelijk slaap/stress/ziekte. Meld dit expliciet in adviezen.
+DATAVELDEN in zijn voortgang (JSON):
+- garmin_activiteiten: { weekId: [{ id, date, sport, sportLabel, metrics:{ duur_min, afstand_km, hr_gem, hr_max, pace_gem, vermogen_gem_w, ... }, note }] } — daadwerkelijk uitgevoerde activiteiten uit Garmin, gegroepeerd per week. Dit is de BRON VAN WAARHEID voor wat hij daadwerkelijk heeft gedaan.
+- rustdagen: { "weekId:dayIndex": true } bewuste rustdagen (geen gemiste training, maar herstelkeuze)
+- verplaatsingen: sessies handmatig verschoven naar een andere dag binnen de week
+- overgeslagen: sessies die zijn vervangen of weggelaten
+- notities: vrije-tekst per sessie
+- kracht: krachtsessies { date, exercise, sets, note }
+- garminReadiness: laatste Garmin Training Readiness { date, score (0-100), level (POOR/LOW/MEDIUM/HIGH) }
+- garminReadinessHistory: [{ date, score, level, timeSlot:'morning'|'evening', updatedAt }]. Lage ochtend-score na zware dag = onvoldoende herstel → adviseer Z2 of rust. Lage avond-score zonder zware training = slaap/stress/ziekte.
 
-Antwoord beknopt en concreet in het Nederlands. Combineer het plan (wat gepland stond, uit het weekschema + sessiebibliotheek) met wat hij echt deed (done/missed/feedback/metrics). Geef cijfers waar je ze hebt. Wees eerlijk over discipline-gaten of trends.
+Antwoord beknopt en concreet in het Nederlands. Vergelijk het plan (weekschema + sessiebibliotheek) met de garmin_activiteiten. Geef cijfers waar je ze hebt. Wees eerlijk over weken zonder activiteiten, of disciplines die ontbreken.
 
 PLANWIJZIGINGEN VOORSTELLEN:
 Als — en alléén als — de gebruiker vraagt om het plan, schema of een sessie aan te passen, geef dan eerst een korte uitleg in gewone taal en daarna PRECIES één codeblok met label plan-patch en geldige JSON in dit formaat:
@@ -4418,15 +4436,10 @@ function renderWeek(key) {
     const pillsHtml = day.sessions.map(sid => {
       const sess = SESSIONS[sid];
       if(!sess) return '';
-      const sessKey = activeWeek + ':' + di + ':' + sid;
-      const isDone = day.done.includes(sid);
-      const isMissed = state.missed[sessKey] === true;
-      const isDayRestForPill = state.rest[activeWeek + ':' + di] === true;
       const isMoving = moveMode && moveMode.sid === sid && moveMode.fromDay === di;
-      const hasFb = !!(state.feedback[sessKey] && state.feedback[sessKey].text);
+      const hasFb = !!(state.feedback[activeWeek + ':' + di + ':' + sid] && state.feedback[activeWeek + ':' + di + ':' + sid].text);
       const displayDur = getDisplayDur(activeWeek, di, sid);
-      const stateClass = isDone ? ' done' : (isMissed ? ' missed' : (isDayRestForPill ? ' day-rest' : ''));
-      return `<div class="session-pill p-${sess.type}${stateClass}${isMoving?' moving':''}"
+      return `<div class="session-pill p-${sess.type}${isMoving?' moving':''}"
         draggable="true"
         data-sid="${sid}"
         data-day="${di}"
@@ -4434,29 +4447,29 @@ function renderWeek(key) {
         ondragstart="onDragStart(event,'${sid}',${di})"
       >
         ${hasFb ? '<span class="pill-fb" title="Heeft feedback">📝</span>' : ''}
-        ${isDone ? '<span class="pill-done">✅</span>' : (isMissed ? '<span class="pill-missed" title="Gemist">🚫</span>' : (isDayRestForPill ? '<span class="pill-missed" title="Bewuste rustdag">🛏</span>' : ''))}
         <div class="pill-name">${sess.label}</div>
         <div class="pill-meta">${displayDur}</div>
         <button class="pill-delete" onclick="event.stopPropagation(); deleteSessionFromDay('${sid}',${di})" title="Verwijder sessie van deze dag">×</button>
       </div>`;
     }).join('');
 
-    // Orphaned done-sessies: staan in state.done voor deze dag maar niet meer in het plan.
-    // Toon ze als grijze "✓ naam (plan gewijzigd)" pills zodat ze niet onzichtbaar verdwijnen.
-    const orphanPrefix = activeWeek + ':' + di + ':';
-    const orphanHtml = Object.keys(state.done)
-      .filter(k => k.startsWith(orphanPrefix) && state.done[k] === true)
-      .map(k => k.slice(orphanPrefix.length))
-      .filter(sid => !day.sessions.includes(sid))
-      .map(sid => {
-        const sess = SESSIONS[sid];
-        const lbl = sess ? sess.label : sid;
-        return `<div class="session-pill done" style="opacity:0.45;border-style:dashed;cursor:default" title="Afgerond — sessie niet meer in huidig plan voor deze dag">
-          <span class="pill-done">✅</span>
-          <div class="pill-name" style="text-decoration:line-through">${escapeHtml(lbl)}</div>
-          <div class="pill-meta" style="font-size:10px;color:#888">plan gewijzigd</div>
-        </div>`;
-      }).join('');
+    // Garmin-activiteiten op deze dag
+    const dayIso = day.iso;
+    const dayActivities = (state.activities || []).filter(a => a.date === dayIso);
+    const sportIcon = { run: '🏃', bike: '🚴', swim: '🏊', str: '💪' };
+    const activityHtml = dayActivities.length ? `<div class="activity-section">${dayActivities.map(a => {
+      const icon = sportIcon[a.sport] || '🏋';
+      const parts = [];
+      if (a.metrics.duur_min) parts.push(a.metrics.duur_min + ' min');
+      if (a.metrics.afstand_km) parts.push(a.metrics.afstand_km + ' km');
+      if (a.metrics.pace_gem) parts.push(a.metrics.pace_gem);
+      if (a.metrics.hr_gem) parts.push('HR ' + a.metrics.hr_gem);
+      return `<div class="activity-pill a-${a.sport || 'other'}" title="${escapeAttr(a.sportLabel || a.sport)}">
+        <div class="activity-pill-sport">${icon} ${escapeHtml(a.sportLabel || a.sport)}</div>
+        <div class="activity-pill-metrics">${escapeHtml(parts.join(' · ') || '—')}</div>
+        ${a.note ? `<div class="activity-pill-metrics" style="font-style:italic">${escapeHtml(a.note)}</div>` : ''}
+      </div>`;
+    }).join('')}</div>` : '';
 
     const isMoveTarget = moveMode && moveMode.fromDay !== di;
     const isDayRest = state.rest[activeWeek + ':' + di] === true;
@@ -4473,7 +4486,8 @@ function renderWeek(key) {
         <div class="day-col-date">${day.date}${restBtn}</div>
       </div>
       <div class="day-col-body">
-        ${pillsHtml || `<div class="empty-day">${emptyLabel}</div>`}${orphanHtml}
+        ${pillsHtml || `<div class="empty-day">${emptyLabel}</div>`}
+        ${activityHtml}
       </div>
     </div>`;
   }).join('');
@@ -4898,12 +4912,6 @@ function buildSessionDetailHTML(weekId, di, sid) {
     ${metricsHtml}
     ${fbHtml}
     ${stepsHtml}
-    <button class="mark-done-btn" onclick="toggleDone('${sid}',${di})">
-      ${isDone ? '↩ Markeer als niet gedaan' : '✅ Markeer als gedaan'}
-    </button>
-    <button class="mark-done-btn" onclick="toggleMissed('${sid}',${di})">
-      ${isMissed ? '↩ Markeer als niet gemist' : '🚫 Markeer als gemist'}
-    </button>
     <button class="move-btn" onclick="startMove('${sid}',${di})">
       📌 Verplaats naar andere dag
     </button>
@@ -6031,6 +6039,7 @@ function fitToItem(parsed) {
     metrics: m,
     _sport: sport,
     _appType: appType,
+    _sportLabel: { run: 'Looptraining', bike: 'Fietstraining', swim: 'Zwemtraining', str: 'Krachttraining' }[appType] || (sport ? sport.charAt(0).toUpperCase() + sport.slice(1) : 'Activiteit'),
     _autoMatched: autoMatched,
     _fingerprint: fingerprint
   };
@@ -6077,8 +6086,6 @@ function renderFitItems() {
         '<button class="modal-btn" data-testid="force-import-btn" style="margin-top:6px;font-size:11px" onclick="forceImportFitItem(\'' + fi.id + '\')">Toch importeren</button></div>';
     }
     const it = fi.item;
-    const sessOpts = buildSessieTypeOptions(it._appType, it.sessie_type);
-    const tag = it._autoMatched ? '<span class="fit-item-tag auto">auto</span>' : '<span class="fit-item-tag">handmatig</span>';
     const statsList = [];
     if (it.metrics.duur_min) statsList.push(it.metrics.duur_min + ' min');
     if (it.metrics.afstand_km) statsList.push(it.metrics.afstand_km + ' km');
@@ -6086,24 +6093,16 @@ function renderFitItems() {
     if (it.metrics.hr_gem) statsList.push('HR ' + it.metrics.hr_gem + (it.metrics.hr_max ? '/' + it.metrics.hr_max : ''));
     if (it.metrics.vermogen_gem_w) statsList.push(it.metrics.vermogen_gem_w + 'W');
     if (it.metrics.cadans_gem) statsList.push(it.metrics.cadans_gem + ' spm/rpm');
+    const sportLabel = { run: 'Looptraining', bike: 'Fietstraining', swim: 'Zwemtraining', str: 'Krachttraining' }[it._appType] || escapeHtml(it._sport || '?');
     return '<div class="fit-item">' +
       '<div class="fit-item-head">' +
-        '<span class="fit-item-title">' + (it.datum || '?') + ' · ' + escapeHtml(it._sport) + ' ' + tag + '</span>' +
+        '<span class="fit-item-title">' + (it.datum || '?') + ' · ' + sportLabel + '</span>' +
         '<button class="fit-item-rm" onclick="removeFitItem(\'' + fi.id + '\')">×</button>' +
       '</div>' +
       '<div class="fit-item-meta">' + escapeHtml(fi.file.name) + '</div>' +
       '<div class="fit-item-stats">' + statsList.join(' · ') + '</div>' +
-      '<div class="fit-item-row">' +
-        '<div><label>Sessie-type</label>' +
-          '<select onchange="updateFitItem(\'' + fi.id + '\',\'sessie_type\',this.value)">' + sessOpts + '</select></div>' +
-        '<div><label>Status</label>' +
-          '<select onchange="updateFitItem(\'' + fi.id + '\',\'voltooid\',this.value===\'true\')">' +
-            '<option value="true" ' + (it.voltooid ? 'selected' : '') + '>✅ Gedaan</option>' +
-            '<option value="false" ' + (!it.voltooid ? 'selected' : '') + '>🚫 Gemist</option>' +
-          '</select></div>' +
-      '</div>' +
-      '<label style="margin-top:6px">Feedback (optioneel)</label>' +
-      '<textarea onchange="updateFitItem(\'' + fi.id + '\',\'feedback\',this.value)" placeholder="bv. voelde licht, eerste keer na blessure…">' + escapeHtml(it.feedback || '') + '</textarea>' +
+      '<label style="margin-top:6px">Notitie (optioneel)</label>' +
+      '<textarea onchange="updateFitItem(\'' + fi.id + '\',\'feedback\',this.value)" placeholder="bv. voelde zwaar, eerste run na blessure…">' + escapeHtml(it.feedback || '') + '</textarea>' +
     '</div>';
   }).join('');
 }
@@ -6135,43 +6134,45 @@ function forceImportFitItem(id) {
 }
 
 async function processFitImport() {
-  const toImport = fitItems.filter(x => x.status === 'ready' && x.item && x.item.datum && x.item.sessie_type);
-  const skipped = fitItems.filter(x => x.status === 'ready' && (!x.item.datum || !x.item.sessie_type));
+  const toImport = fitItems.filter(x => x.status === 'ready' && x.item && x.item.datum);
   if (toImport.length === 0) {
-    setImportMsg('Vul voor elke sessie een datum en sessie-type in (' + skipped.length + ' onvolledig)', 'err');
+    setImportMsg('Geen activiteiten klaar voor import', 'err');
     return;
   }
   setImportMsg('Bezig…');
-  const results = [];
+  state.activities = state.activities || [];
+  state.importedFits = state.importedFits || [];
+  let added = 0;
+  let firstWeekId = null;
   for (const fi of toImport) {
-    const r = await importSingle(fi.item);
-    if (r.success && fi.item._fingerprint) {
-      state.importedFits = state.importedFits || [];
-      if (!state.importedFits.includes(fi.item._fingerprint)) {
-        state.importedFits.push(fi.item._fingerprint);
-      }
+    const item = fi.item;
+    if (item._fingerprint && !state.importedFits.includes(item._fingerprint)) {
+      state.importedFits.push(item._fingerprint);
     }
-    results.push(r);
+    const activity = {
+      id: item._fingerprint || (item.datum + '|' + item._sport),
+      date: item.datum,
+      sport: item._appType || 'other',
+      sportLabel: item._sportLabel || item._sport || item._appType || 'Activiteit',
+      metrics: item.metrics || {},
+      note: (item.feedback && item.feedback.trim()) || ''
+    };
+    const existing = state.activities.findIndex(a => a.id === activity.id);
+    if (existing >= 0) state.activities[existing] = activity;
+    else state.activities.push(activity);
+    added++;
+    if (!firstWeekId) {
+      const wd = findWeekAndDay(item.datum);
+      if (wd) firstWeekId = wd.weekId;
+    }
   }
   await saveState();
-
-  const ok = results.filter(r => r.success).length;
-  const fail = results.filter(r => !r.success);
-  let msg = '✅ ' + ok + ' sessie(s) geïmporteerd';
-  if (fail.length > 0) {
-    msg += ' · ❌ ' + fail.length + ' fout: ' + fail.map(f => f.error).join('; ');
-    setImportMsg(msg, 'err');
-  } else {
-    setImportMsg(msg, 'ok');
-    const firstOk = results.find(r => r.success);
-    if (firstOk && firstOk.weekId) {
-      setTimeout(function() {
-        renderWeek(firstOk.weekId);
-        fitItems = [];
-        closeImport();
-      }, 900);
-    }
-  }
+  setImportMsg('✅ ' + added + ' activiteit(en) opgeslagen', 'ok');
+  setTimeout(function() {
+    if (firstWeekId) renderWeek(firstWeekId);
+    fitItems = [];
+    closeImport();
+  }, 900);
 }
 
 // Vind weekId + dagindex bij een ISO-datum
