@@ -154,26 +154,24 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 .session-pill:hover .pill-delete { opacity: 0.6; }
 .pill-delete:hover { opacity: 1 !important; color: #c62828; }
 .activity-section { margin-top: 4px; border-top: 1px dashed #ccc; padding-top: 4px; }
-.activity-pill { border-radius: 6px; padding: 5px 8px; margin-bottom: 4px; font-size: 11px; border-left: 3px solid #555; background: #f5f5f5; color: #333; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .activity-pill { background: #2a2a2a; color: #ddd; border-color: #888; } :root:not([data-theme="light"]) .activity-section { border-color: #444; } }
-:root[data-theme="dark"] .activity-pill { background: #2a2a2a; color: #ddd; border-color: #888; }
-:root[data-theme="dark"] .activity-section { border-color: #444; }
+.activity-pill { border-radius: 6px; padding: 5px 8px; margin-bottom: 4px; font-size: 11px; background: #666; color: white; }
 .activity-pill-sport { font-weight: bold; margin-bottom: 2px; }
-.activity-pill-metrics { font-size: 10px; opacity: 0.8; }
-.a-run { border-color: #E8532A; }
-.a-bike { border-color: #378ADD; }
-.a-swim { border-color: #1D9E75; }
-.a-str { border-color: #9C68C6; }
+.activity-pill-metrics { font-size: 10px; opacity: 0.85; }
+.a-run  { background: #E8532A; }
+.a-bike { background: #378ADD; }
+.a-swim { background: #1D9E75; }
+.a-str  { background: #9C68C6; }
 
-.p-swim { background: #E1F5EE; border-color: #1D9E75; color: #0F6E56; }
-.p-bike { background: #E6F1FB; border-color: #378ADD; color: #185FA5; }
-.p-run  { background: #FAEEDA; border-color: #EF9F27; color: #854F0B; }
-.p-str  { background: #EEEDFE; border-color: #7F77DD; color: #534AB7; }
-.p-event{ background: #FAC775; border-color: #BA7517; color: #633806; }
-.p-race { background: #FAECE7; border-color: #D85A30; color: #993C1D; font-weight: bold; }
-.p-mobility { background: #F0F9E8; border-color: #689F38; color: #33691E; }
-.p-recovery { background: #E0F7FA; border-color: #0097A7; color: #006064; }
-.p-rest { background: #F1EFE8; border-color: #B4B2A9; color: #5F5E5A; }
+.p-swim, .p-bike, .p-run, .p-str, .p-event, .p-race, .p-mobility, .p-recovery { background: #EFEFEF; color: #444; }
+.p-rest     { background: #F5F5F5; border-color: #BDBDBD; color: #888; }
+.p-run      { border-color: #EF9F27; }
+.p-bike     { border-color: #378ADD; }
+.p-swim     { border-color: #1D9E75; }
+.p-str      { border-color: #7F77DD; }
+.p-event    { border-color: #BA7517; }
+.p-race     { border-color: #D85A30; font-weight: bold; }
+.p-mobility { border-color: #689F38; }
+.p-recovery { border-color: #0097A7; }
 
 /* Detail panel */
 .detail-panel { background: white; border-radius: 8px; padding: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 0; border: 1px solid #ddd; }
@@ -3281,7 +3279,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 106;
+const APP_VERSION = 107;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
