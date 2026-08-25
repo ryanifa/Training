@@ -1956,7 +1956,7 @@ let state = {
   importedFits: [],
   activities: [],          // [{ id, date, sport, sportLabel, metrics, note }] — Garmin-activiteiten op uitvoerdag
   garminReadiness: null,  // { date, score, level, factors, updatedAt } — laatste meting
-  garminReadinessHistory: []  // [{ date, score, level, timeSlot: 'morning'|'evening', updatedAt }] — last few days
+  garminReadinessHistory: []  // [{ date, hour, score, level, timeSlot: 'morning'|'evening', updatedAt }] — uur-granulariteit, last few days
 };
 
 // Bouw runtime week-data uit het verse plan + user overrides
@@ -3279,7 +3279,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 107;
+const APP_VERSION = 108;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3958,7 +3958,7 @@ DATAVELDEN in zijn voortgang (JSON):
 - notities: vrije-tekst per sessie
 - kracht: krachtsessies { date, exercise, sets, note }
 - garminReadiness: laatste Garmin Training Readiness { date, score (0-100), level (POOR/LOW/MEDIUM/HIGH) }
-- garminReadinessHistory: [{ date, score, level, timeSlot:'morning'|'evening', updatedAt }]. Lage ochtend-score na zware dag = onvoldoende herstel → adviseer Z2 of rust. Lage avond-score zonder zware training = slaap/stress/ziekte.
+- garminReadinessHistory: [{ date, hour (0-23), score, level, timeSlot:'morning'|'evening', updatedAt }]. Uur-granulariteit: elke hourly agent-run pakt de dan-actuele readiness (kan gedurende de dag veranderen). Analyseer trend BINNEN de dag (bv. hoge ochtend, laag na intensieve training = normale respons; laag door de hele dag = onvoldoende herstel). Vergelijk ook DAG-tot-DAG: lage ochtend na zware dag = adviseer Z2 of rust; lage waarde zonder zware training = slaap/stress/ziekte.
 
 Antwoord beknopt en concreet in het Nederlands. Vergelijk het plan (weekschema + sessiebibliotheek) met de garmin_activiteiten. Geef cijfers waar je ze hebt. Wees eerlijk over weken zonder activiteiten, of disciplines die ontbreken.
 
