@@ -3296,7 +3296,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 113;
+const APP_VERSION = 114;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -6606,6 +6606,13 @@ function refreshSwimrunMapMarkers() {
 function refreshSwimrunIntervals() {
   const ctx = swimrunModalCtx;
   const act = state.activities.find(a => a.id === ctx.activityId);
+  // Sorteer chronologisch op startT. Segmenten zonder startT (nog leeg toegevoegd)
+  // gaan naar het eind. Zo houden idx-verwijzingen in de UI altijd juiste volgorde.
+  ctx.tempSegs.sort((a, b) => {
+    const ax = a.startT == null ? Infinity : a.startT;
+    const bx = b.startT == null ? Infinity : b.startT;
+    return ax - bx;
+  });
   const segs = ctx.tempSegs;
   let html = '<div style="margin-top:8px"><strong style="font-size:13px">Zwem-intervals</strong></div>';
   if (segs.length === 0) {
