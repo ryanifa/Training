@@ -3296,7 +3296,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 111;
+const APP_VERSION = 112;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -6350,9 +6350,29 @@ function fmtDur(sec) {
   return m + ':' + String(s).padStart(2, '0');
 }
 
+// Bereken auto-metrics (afstand/moving-tijd/HR) voor een interval uit records.
+function computeSegAutoMetrics(records, startT, endT) {
+  const intervalSec = Math.max(1, records[1].t - records[0].t);
+  const inRange = records.filter(r => r.t >= startT && r.t < endT);
+  let distanceM = 0, movingSec = 0, hrSum = 0, hrCount = 0;
+  for (const s of inRange) {
+    if (s.v && s.v > 0.3) {
+      distanceM += (s.v * 1000 / 3600) * intervalSec;
+      movingSec += intervalSec;
+    }
+    if (s.hr) { hrSum += s.hr; hrCount++; }
+  }
+  return {
+    distanceM: Math.round(distanceM),
+    movingSec,
+    hrAvg: hrCount ? Math.round(hrSum / hrCount) : null
+  };
+}
+
 // Bouw segments+totals op basis van HANDMATIG aangewezen zwem-intervals.
 // Buiten de zwem-intervals wordt op basis van records een run/walk-segment
-// bepaald. Records leveren afstand + moving pace per interval.
+// bepaald. Records leveren afstand + moving pace per interval, of user
+// override via manualDistanceM (bv. GPS-drift correctie).
 function buildSwimrunFromManual(records, manualSegs) {
   if (!Array.isArray(records) || records.length < 2) return null;
   const sorted = (manualSegs || []).slice().filter(s => s && s.startT != null && s.endT != null && s.endT > s.startT)
@@ -6365,35 +6385,36 @@ function buildSwimrunFromManual(records, manualSegs) {
   let cursor = 0;
   for (const sw of sorted) {
     if (sw.startT > cursor) rawSegs.push({ type: 'run', startT: cursor, endT: sw.startT });
-    rawSegs.push({ type: 'swim', startT: sw.startT, endT: sw.endT });
+    rawSegs.push({ type: 'swim', startT: sw.startT, endT: sw.endT, manualDistanceM: sw.manualDistanceM });
     cursor = sw.endT;
   }
   if (cursor < lastT) rawSegs.push({ type: 'run', startT: cursor, endT: lastT });
 
   const segments = rawSegs.map(seg => {
-    const inRange = records.filter(r => r.t >= seg.startT && r.t < seg.endT);
-    let distanceM = 0, movingSec = 0, hrSum = 0, hrCount = 0;
-    for (const s of inRange) {
-      if (s.v && s.v > 0.3) {
-        distanceM += (s.v * 1000 / 3600) * intervalSec;
-        movingSec += intervalSec;
-      }
-      if (s.hr) { hrSum += s.hr; hrCount++; }
-    }
+    const auto = computeSegAutoMetrics(records, seg.startT, seg.endT);
     const totalSec = seg.endT - seg.startT;
-    const hrAvg = hrCount ? Math.round(hrSum / hrCount) : null;
+    const manualOverride = seg.type === 'swim' && seg.manualDistanceM != null;
+    const distanceM = manualOverride ? seg.manualDistanceM : auto.distanceM;
+    // Bij handmatige afstand: gebruik totalSec voor pace (user weet dat dit
+    // puur zwem was, incl. adem-pauzes). Bij auto: moving pace uit records.
+    const paceBaseSec = manualOverride ? totalSec : auto.movingSec;
     let paceStr = null;
-    if (seg.type === 'swim' && distanceM >= 20 && movingSec > 0) {
-      paceStr = fmtPace(movingSec / (distanceM / 100)) + '/100m';
-    } else if (seg.type === 'run' && distanceM >= 100 && movingSec > 0) {
-      paceStr = fmtPace(movingSec / (distanceM / 1000)) + '/km';
+    if (seg.type === 'swim' && distanceM >= 20 && paceBaseSec > 0) {
+      paceStr = fmtPace(paceBaseSec / (distanceM / 100)) + '/100m';
+    } else if (seg.type === 'run' && distanceM >= 100 && auto.movingSec > 0) {
+      paceStr = fmtPace(auto.movingSec / (distanceM / 1000)) + '/km';
     }
-    return { type: seg.type, startT: seg.startT, endT: seg.endT, distanceM: Math.round(distanceM), movingSec, totalSec, paceStr, hrAvg };
+    return {
+      type: seg.type, startT: seg.startT, endT: seg.endT,
+      distanceM, movingSec: auto.movingSec, totalSec,
+      paceStr, hrAvg: auto.hrAvg,
+      manualDistance: manualOverride
+    };
   });
 
   const totals = { run: {d:0,t:0}, swim: {d:0,t:0}, walk: {d:0,t:0}, transitionSec: 0 };
   for (const s of segments) {
-    if (s.type in totals) { totals[s.type].d += s.distanceM; totals[s.type].t += s.movingSec; }
+    if (s.type in totals) { totals[s.type].d += s.distanceM; totals[s.type].t += s.movingSec || s.totalSec; }
   }
   return { segments, totals, manual: true, generatedAt: new Date().toISOString() };
 }
@@ -6562,10 +6583,15 @@ function refreshSwimrunIntervals() {
   } else {
     html += '<table style="width:100%;font-size:13px;margin-top:4px;border-collapse:collapse">';
     segs.forEach((seg, idx) => {
+      const isComplete = seg.startT != null && seg.endT != null;
+      const auto = isComplete ? computeSegAutoMetrics(act.records, seg.startT, seg.endT) : null;
+      const distDisplay = seg.manualDistanceM != null ? seg.manualDistanceM : (auto ? auto.distanceM : '');
+      const distLabel = seg.manualDistanceM != null ? '<span style="color:#f59e0b;font-size:10px">handm.</span>' : (auto ? '<span style="color:#888;font-size:10px">berekend</span>' : '');
       html += '<tr>' +
         '<td style="padding:4px 2px">🏊 ' + (idx + 1) + '</td>' +
         '<td>Start: <input type="text" value="' + fmtDur(seg.startT) + '" style="width:70px;padding:2px 4px;font-family:monospace;font-size:12px" onchange="updateSwimSegTime(' + idx + ',\'startT\',this.value)"></td>' +
         '<td>Eind: <input type="text" value="' + (seg.endT != null ? fmtDur(seg.endT) : '—') + '" placeholder="—" style="width:70px;padding:2px 4px;font-family:monospace;font-size:12px" onchange="updateSwimSegTime(' + idx + ',\'endT\',this.value)"></td>' +
+        '<td>Afstand: <input type="number" min="0" step="10" value="' + distDisplay + '" placeholder="m" style="width:70px;padding:2px 4px;font-family:monospace;font-size:12px" ' + (isComplete ? '' : 'disabled') + ' onchange="updateSwimSegDistance(' + idx + ',this.value)"> m ' + distLabel + '</td>' +
         '<td><button style="border:none;background:#f5f5f5;border-radius:4px;padding:2px 6px;cursor:pointer" onclick="removeSwimSeg(' + idx + ')">×</button></td>' +
       '</tr>';
     });
@@ -6583,6 +6609,19 @@ function refreshSwimrunIntervals() {
   } else {
     document.getElementById('swimrunSummary').innerHTML = '';
   }
+}
+
+function updateSwimSegDistance(idx, val) {
+  const s = String(val || '').trim();
+  if (s === '') {
+    // Leeg = terug naar auto-berekend
+    delete swimrunModalCtx.tempSegs[idx].manualDistanceM;
+  } else {
+    const n = Math.round(Number(s));
+    if (!isFinite(n) || n < 0) return;
+    swimrunModalCtx.tempSegs[idx].manualDistanceM = n;
+  }
+  refreshSwimrunIntervals();
 }
 
 function renderSwimrunSummary(a) {
@@ -6652,7 +6691,11 @@ async function saveSwimrunAnalysis() {
   const act = state.activities.find(a => a.id === ctx.activityId);
   if (!act) return;
   const clean = ctx.tempSegs.filter(s => s.startT != null && s.endT != null && s.endT > s.startT);
-  act.manualSwimSegments = clean.map(s => ({ startT: s.startT, endT: s.endT }));
+  act.manualSwimSegments = clean.map(s => {
+    const o = { startT: s.startT, endT: s.endT };
+    if (s.manualDistanceM != null) o.manualDistanceM = s.manualDistanceM;
+    return o;
+  });
   act.swimrunAnalysis = buildSwimrunFromManual(act.records, act.manualSwimSegments);
   await saveState();
   refreshSwimrunIntervals();
