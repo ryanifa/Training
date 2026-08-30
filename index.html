@@ -1971,7 +1971,7 @@ let state = {
   strength: [],
   chatMessages: [],
   importedFits: [],
-  activities: [],          // [{ id, date, sport, sportLabel, metrics, note, records?, swimrunAnalysis? }] — Garmin-activiteiten op uitvoerdag. records = 10s-samples voor analyse.
+  activities: [],          // [{ id, date, sport, sportLabel, metrics, note, records?, manualSwimSegments?, swimrunAnalysis? }] — Garmin-activiteiten op uitvoerdag. records = 10s-samples voor analyse. manualSwimSegments = [{startT, endT}] handmatig aangewezen zwem-intervals.
   garminReadiness: null,  // { date, score, level, factors, updatedAt } — laatste meting
   garminReadinessHistory: []  // [{ date, hour, score, level, timeSlot: 'morning'|'evening', updatedAt }] — uur-granulariteit, last few days
 };
@@ -3296,7 +3296,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 110;
+const APP_VERSION = 111;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -6097,12 +6097,18 @@ function downsampleRecords(records, intervalSec) {
     // Cadence: bij running geeft FIT halve cadans (per been), verdubbelen
     let cad = null;
     if (typeof r.cadence === 'number') cad = r.cadence * 2;
-    out.push({
+    const sample = {
       t,
       v: v != null ? Math.round(v * 10) / 10 : null,
       hr,
       cad
-    });
+    };
+    // Positie (lat/lon) voor kaart-visualisatie in swimrun-analyse
+    if (typeof r.position_lat === 'number' && typeof r.position_long === 'number') {
+      sample.lat = Math.round(r.position_lat * 100000) / 100000;
+      sample.lon = Math.round(r.position_long * 100000) / 100000;
+    }
+    out.push(sample);
     nextT = t + intervalSec;
   }
   return out.length ? out : null;
@@ -6344,56 +6350,323 @@ function fmtDur(sec) {
   return m + ':' + String(s).padStart(2, '0');
 }
 
-async function runSwimrunAnalysis(activityId) {
-  const idx = (state.activities || []).findIndex(a => a.id === activityId);
-  if (idx < 0) return;
-  const act = state.activities[idx];
-  if (!Array.isArray(act.records) || act.records.length < 3) {
-    alert('Geen tijdreeks-data voor deze activiteit — opnieuw importeren via de agent nodig (verwijder de activityId uit imported-ids.json en laat de agent draaien).');
-    return;
+// Bouw segments+totals op basis van HANDMATIG aangewezen zwem-intervals.
+// Buiten de zwem-intervals wordt op basis van records een run/walk-segment
+// bepaald. Records leveren afstand + moving pace per interval.
+function buildSwimrunFromManual(records, manualSegs) {
+  if (!Array.isArray(records) || records.length < 2) return null;
+  const sorted = (manualSegs || []).slice().filter(s => s && s.startT != null && s.endT != null && s.endT > s.startT)
+    .sort((a, b) => a.startT - b.startT);
+  const intervalSec = Math.max(1, records[1].t - records[0].t);
+  const lastT = records[records.length - 1].t + intervalSec;
+
+  // Bouw alle segmenten (afwisselend loop/zwem)
+  const rawSegs = [];
+  let cursor = 0;
+  for (const sw of sorted) {
+    if (sw.startT > cursor) rawSegs.push({ type: 'run', startT: cursor, endT: sw.startT });
+    rawSegs.push({ type: 'swim', startT: sw.startT, endT: sw.endT });
+    cursor = sw.endT;
   }
-  const result = classifySwimrun(act.records);
-  if (!result) { alert('Analyse mislukt.'); return; }
-  act.swimrunAnalysis = result;
-  await saveState();
-  openSwimrunModal(activityId);
+  if (cursor < lastT) rawSegs.push({ type: 'run', startT: cursor, endT: lastT });
+
+  const segments = rawSegs.map(seg => {
+    const inRange = records.filter(r => r.t >= seg.startT && r.t < seg.endT);
+    let distanceM = 0, movingSec = 0, hrSum = 0, hrCount = 0;
+    for (const s of inRange) {
+      if (s.v && s.v > 0.3) {
+        distanceM += (s.v * 1000 / 3600) * intervalSec;
+        movingSec += intervalSec;
+      }
+      if (s.hr) { hrSum += s.hr; hrCount++; }
+    }
+    const totalSec = seg.endT - seg.startT;
+    const hrAvg = hrCount ? Math.round(hrSum / hrCount) : null;
+    let paceStr = null;
+    if (seg.type === 'swim' && distanceM >= 20 && movingSec > 0) {
+      paceStr = fmtPace(movingSec / (distanceM / 100)) + '/100m';
+    } else if (seg.type === 'run' && distanceM >= 100 && movingSec > 0) {
+      paceStr = fmtPace(movingSec / (distanceM / 1000)) + '/km';
+    }
+    return { type: seg.type, startT: seg.startT, endT: seg.endT, distanceM: Math.round(distanceM), movingSec, totalSec, paceStr, hrAvg };
+  });
+
+  const totals = { run: {d:0,t:0}, swim: {d:0,t:0}, walk: {d:0,t:0}, transitionSec: 0 };
+  for (const s of segments) {
+    if (s.type in totals) { totals[s.type].d += s.distanceM; totals[s.type].t += s.movingSec; }
+  }
+  return { segments, totals, manual: true, generatedAt: new Date().toISOString() };
 }
 
-function openSwimrunModal(activityId) {
+// Leaflet dynamisch laden (via jsDelivr, alleen wanneer nodig)
+async function loadLeaflet() {
+  if (window.L) return window.L;
+  if (!document.getElementById('leaflet-css')) {
+    const link = document.createElement('link');
+    link.id = 'leaflet-css';
+    link.rel = 'stylesheet';
+    link.href = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+  }
+  await new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js';
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('Leaflet laden mislukt'));
+    document.head.appendChild(script);
+  });
+  return window.L;
+}
+
+// Modal-state
+let swimrunModalCtx = null;  // { activityId, tempSegs: [{startT, endT|null}], map, polyline, cursorMarker }
+
+async function openSwimrunModal(activityId) {
   const act = (state.activities || []).find(a => a.id === activityId);
-  if (!act || !act.swimrunAnalysis) return;
-  const a = act.swimrunAnalysis;
+  if (!act) return;
+  if (!Array.isArray(act.records) || act.records.length < 3) {
+    alert('Geen tijdreeks-data voor deze activiteit. Verwijder de fingerprint uit imported-ids.json en laat de garmin-agent draaien om records op te bouwen.');
+    return;
+  }
+  const hasGeo = act.records.some(r => r.lat != null && r.lon != null);
+  swimrunModalCtx = {
+    activityId,
+    tempSegs: (act.manualSwimSegments || []).map(s => ({ startT: s.startT, endT: s.endT })),
+    hasGeo,
+    map: null,
+    polyline: null,
+    cursorMarker: null,
+    intervalMarkers: []
+  };
+  document.getElementById('swimrunTitle').textContent = 'Swimrun-analyse — ' + (act.sportLabel || act.sport) + ' · ' + act.date;
+  document.getElementById('swimrunBody').innerHTML = renderSwimrunModalContent(act);
+  document.getElementById('swimrunModal').classList.add('active');
+
+  if (hasGeo) {
+    try {
+      const L = await loadLeaflet();
+      initSwimrunMap(L, act);
+    } catch (e) {
+      const el = document.getElementById('swimrunMap');
+      if (el) el.innerHTML = '<div style="padding:20px;color:#c62828;font-size:12px">Kaart-library kon niet geladen worden: ' + escapeHtml(e.message) + '</div>';
+    }
+  }
+}
+
+function renderSwimrunModalContent(act) {
+  const ctx = swimrunModalCtx;
+  const hasGeo = ctx.hasGeo;
+  const noGeoHint = !hasGeo
+    ? '<div style="padding:10px 12px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;font-size:12px;margin-bottom:12px;color:#78350f">' +
+      '⚠ Deze activiteit heeft geen positie-data (oude import). Kaart-klik werkt niet. ' +
+      'Om de kaart-modus te gebruiken: verwijder <code>' + escapeHtml(act.id) + '</code> uit <code>imported-ids.json</code> op de agent-machine en laat de agent opnieuw draaien. ' +
+      'Ondertussen kun je de tijden hieronder handmatig invullen (mm:ss of h:mm:ss).' +
+      '</div>'
+    : '<div style="font-size:12px;color:#666;margin-bottom:8px">🖱 Klik op de kaart om de <strong>start</strong> van een zwem-interval te zetten, klik opnieuw voor het <strong>eind</strong>. Herhaal voor meer zwem-blokken.</div>';
+
+  const mapHtml = '<div id="swimrunMap" style="width:100%;height:360px;border-radius:6px;background:#e5e5e5;margin-bottom:12px' + (hasGeo ? '' : ';display:none') + '"></div>';
+
+  return noGeoHint + mapHtml + '<div id="swimrunIntervals"></div><div id="swimrunSummary"></div>' +
+    '<div style="margin-top:10px;text-align:right"><button class="modal-btn" onclick="clearSwimrunSegments()">🗑 Alles wissen</button></div>';
+}
+
+function initSwimrunMap(L, act) {
+  const ctx = swimrunModalCtx;
+  const pts = act.records.filter(r => r.lat != null && r.lon != null);
+  if (pts.length < 2) return;
+  const map = L.map('swimrunMap', { attributionControl: false, zoomControl: true });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+  const latLngs = pts.map(r => [r.lat, r.lon]);
+  const polyline = L.polyline(latLngs, { color: '#378ADD', weight: 4, opacity: 0.85 }).addTo(map);
+  map.fitBounds(polyline.getBounds(), { padding: [20, 20] });
+  const cursor = L.circleMarker(latLngs[0], { radius: 6, color: '#000', weight: 2, fillColor: '#fff', fillOpacity: 1 }).addTo(map);
+  cursor.setLatLng([0, 0]); // hide initially
+  ctx.map = map;
+  ctx.polyline = polyline;
+  ctx.cursorMarker = cursor;
+
+  // Klik = tijd zoeken via dichtstbijzijnde record
+  map.on('click', (ev) => {
+    const clicked = ev.latlng;
+    let bestIdx = 0, bestDist = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const dLat = pts[i].lat - clicked.lat;
+      const dLon = pts[i].lon - clicked.lng;
+      const d = dLat * dLat + dLon * dLon;
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    const t = pts[bestIdx].t;
+    handleSwimrunClickTime(t, pts[bestIdx].lat, pts[bestIdx].lon);
+  });
+
+  refreshSwimrunMapMarkers();
+  refreshSwimrunIntervals();
+}
+
+function handleSwimrunClickTime(t, lat, lon) {
+  const ctx = swimrunModalCtx;
+  const segs = ctx.tempSegs;
+  // Als laatste segment "open" is (geen endT) → zet endT
+  const last = segs[segs.length - 1];
+  if (last && last.endT == null) {
+    if (t <= last.startT) {
+      alert('Eindtijd moet na starttijd zijn (' + fmtDur(last.startT) + ').');
+      return;
+    }
+    last.endT = t;
+  } else {
+    // Nieuw segment starten
+    segs.push({ startT: t, endT: null });
+  }
+  refreshSwimrunMapMarkers();
+  refreshSwimrunIntervals();
+}
+
+function refreshSwimrunMapMarkers() {
+  const ctx = swimrunModalCtx;
+  if (!ctx.map || !ctx.hasGeo) return;
+  const L = window.L;
+  const act = state.activities.find(a => a.id === ctx.activityId);
+  const pts = act.records.filter(r => r.lat != null && r.lon != null);
+  // Verwijder oude markers
+  for (const m of ctx.intervalMarkers) { try { ctx.map.removeLayer(m); } catch (_) {} }
+  ctx.intervalMarkers = [];
+  const findPt = (t) => pts.reduce((best, p) => (Math.abs(p.t - t) < Math.abs(best.t - t) ? p : best), pts[0]);
+  ctx.tempSegs.forEach((seg, idx) => {
+    const startPt = findPt(seg.startT);
+    const startMarker = L.circleMarker([startPt.lat, startPt.lon], { radius: 8, color: '#000', weight: 2, fillColor: '#1D9E75', fillOpacity: 1 })
+      .bindTooltip('Zwem ' + (idx + 1) + ' start (' + fmtDur(seg.startT) + ')').addTo(ctx.map);
+    ctx.intervalMarkers.push(startMarker);
+    if (seg.endT != null) {
+      const endPt = findPt(seg.endT);
+      const endMarker = L.circleMarker([endPt.lat, endPt.lon], { radius: 8, color: '#000', weight: 2, fillColor: '#c62828', fillOpacity: 1 })
+        .bindTooltip('Zwem ' + (idx + 1) + ' eind (' + fmtDur(seg.endT) + ')').addTo(ctx.map);
+      ctx.intervalMarkers.push(endMarker);
+      // Highlight de swim-portie van de polyline
+      const swimPts = pts.filter(p => p.t >= seg.startT && p.t <= seg.endT).map(p => [p.lat, p.lon]);
+      if (swimPts.length >= 2) {
+        const highlight = L.polyline(swimPts, { color: '#1D9E75', weight: 6, opacity: 0.9 }).addTo(ctx.map);
+        ctx.intervalMarkers.push(highlight);
+      }
+    }
+  });
+}
+
+function refreshSwimrunIntervals() {
+  const ctx = swimrunModalCtx;
+  const act = state.activities.find(a => a.id === ctx.activityId);
+  const segs = ctx.tempSegs;
+  let html = '<div style="margin-top:8px"><strong style="font-size:13px">Zwem-intervals</strong></div>';
+  if (segs.length === 0) {
+    html += '<div style="color:#888;font-size:12px;padding:6px 0">Nog geen intervals — ' + (ctx.hasGeo ? 'klik op de kaart om een start te zetten' : 'gebruik onderstaande handmatige invoer') + '.</div>';
+  } else {
+    html += '<table style="width:100%;font-size:13px;margin-top:4px;border-collapse:collapse">';
+    segs.forEach((seg, idx) => {
+      html += '<tr>' +
+        '<td style="padding:4px 2px">🏊 ' + (idx + 1) + '</td>' +
+        '<td>Start: <input type="text" value="' + fmtDur(seg.startT) + '" style="width:70px;padding:2px 4px;font-family:monospace;font-size:12px" onchange="updateSwimSegTime(' + idx + ',\'startT\',this.value)"></td>' +
+        '<td>Eind: <input type="text" value="' + (seg.endT != null ? fmtDur(seg.endT) : '—') + '" placeholder="—" style="width:70px;padding:2px 4px;font-family:monospace;font-size:12px" onchange="updateSwimSegTime(' + idx + ',\'endT\',this.value)"></td>' +
+        '<td><button style="border:none;background:#f5f5f5;border-radius:4px;padding:2px 6px;cursor:pointer" onclick="removeSwimSeg(' + idx + ')">×</button></td>' +
+      '</tr>';
+    });
+    html += '</table>';
+  }
+  html += '<div style="margin-top:8px"><button class="modal-btn" onclick="addSwimSeg()">+ Zwem-interval toevoegen (handmatig)</button> ' +
+          '<button class="modal-btn modal-btn-primary" onclick="saveSwimrunAnalysis()" style="margin-left:6px">💾 Bewaar & bereken</button></div>';
+  document.getElementById('swimrunIntervals').innerHTML = html;
+
+  // Live preview van totals als alle intervals compleet zijn
+  const complete = segs.length > 0 && segs.every(s => s.endT != null);
+  if (complete) {
+    const analysis = buildSwimrunFromManual(act.records, segs);
+    document.getElementById('swimrunSummary').innerHTML = renderSwimrunSummary(analysis);
+  } else {
+    document.getElementById('swimrunSummary').innerHTML = '';
+  }
+}
+
+function renderSwimrunSummary(a) {
+  if (!a) return '';
+  const t = a.totals;
   const sportIcon = { run: '🏃', swim: '🏊', walk: '🚶' };
-  const rows = a.segments.map((s, i) => {
+  const rows = a.segments.map(s => {
     const icon = sportIcon[s.type] || '·';
-    const startMin = Math.floor(s.startT / 60);
     return '<tr>' +
       '<td>' + icon + ' ' + s.type + '</td>' +
       '<td>' + (s.distanceM >= 1000 ? (s.distanceM/1000).toFixed(2) + ' km' : s.distanceM + ' m') + '</td>' +
-      '<td>' + fmtDur(s.totalSec) + (s.movingSec !== s.totalSec ? ' <span style="color:#888;font-size:11px">(mov ' + fmtDur(s.movingSec) + ')</span>' : '') + '</td>' +
+      '<td>' + fmtDur(s.totalSec) + (s.movingSec !== s.totalSec && s.type === 'swim' ? ' <span style="color:#888;font-size:11px">(mov ' + fmtDur(s.movingSec) + ')</span>' : '') + '</td>' +
       '<td>' + (s.paceStr || '—') + '</td>' +
       '<td>' + (s.hrAvg ? s.hrAvg : '—') + '</td>' +
-      '<td style="color:#888;font-size:11px">@ ' + startMin + 'm</td>' +
     '</tr>';
   }).join('');
-  const t = a.totals;
-  const totalsHtml =
+  return '<div style="margin-top:14px"><strong style="font-size:13px">Preview</strong></div>' +
+    '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:4px"><thead><tr style="border-bottom:1px solid #ddd;text-align:left"><th>Type</th><th>Afstand</th><th>Duur</th><th>Pace</th><th>HR</th></tr></thead><tbody>' + rows + '</tbody></table>' +
     '<div style="margin-top:12px;padding:8px 10px;background:#f5f5f5;border-radius:6px;font-size:13px">' +
-    '<div>🏃 Loop totaal: <strong>' + (t.run.d/1000).toFixed(2) + ' km · ' + fmtDur(t.run.t) + '</strong>' +
-      (t.run.t ? ' · ' + fmtPace(t.run.t / (t.run.d/1000)) + '/km' : '') + '</div>' +
-    '<div>🏊 Zwem totaal: <strong>' + t.swim.d + ' m · ' + fmtDur(t.swim.t) + '</strong>' +
-      (t.swim.t && t.swim.d ? ' · ' + fmtPace(t.swim.t / (t.swim.d/100)) + '/100m' : '') + '</div>' +
-    (t.walk.d > 0 ? '<div>🚶 Wandelen: <strong>' + t.walk.d + ' m · ' + fmtDur(t.walk.t) + '</strong></div>' : '') +
-    (t.transitionSec > 0 ? '<div>🔄 Transities: <strong>' + fmtDur(t.transitionSec) + '</strong></div>' : '') +
+    (t.run.d > 0 ? '<div>🏃 Loop totaal: <strong>' + (t.run.d/1000).toFixed(2) + ' km · ' + fmtDur(t.run.t) + '</strong>' + (t.run.t ? ' · ' + fmtPace(t.run.t / (t.run.d/1000)) + '/km' : '') + '</div>' : '') +
+    (t.swim.d > 0 ? '<div>🏊 Zwem totaal: <strong>' + t.swim.d + ' m · ' + fmtDur(t.swim.t) + '</strong>' + (t.swim.t && t.swim.d ? ' · ' + fmtPace(t.swim.t / (t.swim.d/100)) + '/100m' : '') + '</div>' : '') +
     '</div>';
-  document.getElementById('swimrunTitle').textContent = 'Swimrun-analyse — ' + (act.sportLabel || act.sport) + ' · ' + act.date;
-  document.getElementById('swimrunBody').innerHTML =
-    '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="border-bottom:1px solid #ddd;text-align:left"><th>Type</th><th>Afstand</th><th>Duur</th><th>Pace</th><th>HR</th><th>Start</th></tr></thead><tbody>' +
-    rows + '</tbody></table>' + totalsHtml;
-  document.getElementById('swimrunModal').classList.add('active');
 }
-function closeSwimrunModal() { document.getElementById('swimrunModal').classList.remove('active'); }
+
+function addSwimSeg() {
+  const ctx = swimrunModalCtx;
+  ctx.tempSegs.push({ startT: 0, endT: null });
+  refreshSwimrunIntervals();
+  refreshSwimrunMapMarkers();
+}
+
+function removeSwimSeg(idx) {
+  swimrunModalCtx.tempSegs.splice(idx, 1);
+  refreshSwimrunIntervals();
+  refreshSwimrunMapMarkers();
+}
+
+// Parseer "mm:ss" of "h:mm:ss" naar seconden
+function parseTimeStr(s) {
+  s = String(s || '').trim();
+  if (!s || s === '—') return null;
+  const parts = s.split(':').map(p => parseInt(p, 10));
+  if (parts.some(isNaN)) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 1) return parts[0];
+  return null;
+}
+
+function updateSwimSegTime(idx, field, val) {
+  const t = parseTimeStr(val);
+  if (t == null) { refreshSwimrunIntervals(); return; }
+  swimrunModalCtx.tempSegs[idx][field] = t;
+  refreshSwimrunIntervals();
+  refreshSwimrunMapMarkers();
+}
+
+function clearSwimrunSegments() {
+  if (!confirm('Alle zwem-intervals verwijderen?')) return;
+  swimrunModalCtx.tempSegs = [];
+  refreshSwimrunIntervals();
+  refreshSwimrunMapMarkers();
+}
+
+async function saveSwimrunAnalysis() {
+  const ctx = swimrunModalCtx;
+  const act = state.activities.find(a => a.id === ctx.activityId);
+  if (!act) return;
+  const clean = ctx.tempSegs.filter(s => s.startT != null && s.endT != null && s.endT > s.startT);
+  act.manualSwimSegments = clean.map(s => ({ startT: s.startT, endT: s.endT }));
+  act.swimrunAnalysis = buildSwimrunFromManual(act.records, act.manualSwimSegments);
+  await saveState();
+  refreshSwimrunIntervals();
+  alert('✓ Analyse opgeslagen (' + clean.length + ' zwem-intervals)');
+}
+
+function closeSwimrunModal() {
+  document.getElementById('swimrunModal').classList.remove('active');
+  swimrunModalCtx = null;
+}
 function onSwimrunBgClick(e) { if (e.target.id === 'swimrunModal') closeSwimrunModal(); }
+
+// Compat: oude knop-tekst roept runSwimrunAnalysis aan — nu opent gewoon de modal
+async function runSwimrunAnalysis(activityId) { return openSwimrunModal(activityId); }
 
 async function processFitImport() {
   const toImport = fitItems.filter(x => x.status === 'ready' && x.item && x.item.datum);
