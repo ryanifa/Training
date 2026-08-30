@@ -3296,7 +3296,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 114;
+const APP_VERSION = 115;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -6557,16 +6557,18 @@ function initSwimrunMap(L, act) {
 function handleSwimrunClickTime(t, lat, lon) {
   const ctx = swimrunModalCtx;
   const segs = ctx.tempSegs;
-  // Als laatste segment "open" is (geen endT) → zet endT
-  const last = segs[segs.length - 1];
-  if (last && last.endT == null) {
-    if (t <= last.startT) {
-      alert('Eindtijd moet na starttijd zijn (' + fmtDur(last.startT) + ').');
+  // Zoek een openstaand segment (startT gezet, endT nog niet) — na sortering
+  // zit dat niet altijd als laatste in de array. Als er één is: vul endT.
+  // Zo niet: nieuw segment starten.
+  const openIdx = segs.findIndex(s => s.startT != null && s.endT == null);
+  if (openIdx >= 0) {
+    const open = segs[openIdx];
+    if (t <= open.startT) {
+      alert('Eindtijd moet na starttijd zijn (' + fmtDur(open.startT) + ').');
       return;
     }
-    last.endT = t;
+    open.endT = t;
   } else {
-    // Nieuw segment starten
     segs.push({ startT: t, endT: null });
   }
   refreshSwimrunMapMarkers();
