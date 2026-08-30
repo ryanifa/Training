@@ -970,6 +970,23 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 </div>
 
 <!-- REASSIGN SESSION-TYPE MODAL -->
+<!-- Swimrun-analyse modal -->
+<div class="modal-overlay" id="swimrunModal" onclick="onSwimrunBgClick(event)">
+  <div class="modal-box" style="max-width:640px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="swimrunTitle">Swimrun-analyse</div>
+        <div class="modal-sub">Detectie van zwem- en loop-segmenten in deze activiteit (10s-samples, moving pace).</div>
+      </div>
+      <button class="modal-close" onclick="closeSwimrunModal()">×</button>
+    </div>
+    <div class="modal-body" id="swimrunBody" style="overflow-x:auto"></div>
+    <div class="modal-footer">
+      <button class="modal-btn" onclick="closeSwimrunModal()">Sluiten</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="reassignModal" onclick="onReassignBgClick(event)">
   <div class="modal-box" style="max-width:500px">
     <div class="modal-header">
@@ -1954,7 +1971,7 @@ let state = {
   strength: [],
   chatMessages: [],
   importedFits: [],
-  activities: [],          // [{ id, date, sport, sportLabel, metrics, note }] — Garmin-activiteiten op uitvoerdag
+  activities: [],          // [{ id, date, sport, sportLabel, metrics, note, records?, swimrunAnalysis? }] — Garmin-activiteiten op uitvoerdag. records = 10s-samples voor analyse.
   garminReadiness: null,  // { date, score, level, factors, updatedAt } — laatste meting
   garminReadinessHistory: []  // [{ date, hour, score, level, timeSlot: 'morning'|'evening', updatedAt }] — uur-granulariteit, last few days
 };
@@ -3279,7 +3296,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 108;
+const APP_VERSION = 109;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -4462,10 +4479,16 @@ function renderWeek(key) {
       if (a.metrics.afstand_km) parts.push(a.metrics.afstand_km + ' km');
       if (a.metrics.pace_gem) parts.push(a.metrics.pace_gem);
       if (a.metrics.hr_gem) parts.push('HR ' + a.metrics.hr_gem);
+      const canAnalyze = a.sport === 'run' && Array.isArray(a.records) && a.records.length >= 3;
+      const hasAnalysis = !!(a.swimrunAnalysis && a.swimrunAnalysis.segments);
+      const swimBtn = canAnalyze
+        ? `<button style="margin-top:4px;font-size:10px;padding:2px 6px;background:transparent;border:1px solid #999;border-radius:4px;cursor:pointer;color:inherit" onclick="event.stopPropagation(); ${hasAnalysis ? "openSwimrunModal('" + escapeAttr(a.id) + "')" : "runSwimrunAnalysis('" + escapeAttr(a.id) + "')"}">🏊 ${hasAnalysis ? 'Toon swimrun-breakdown' : 'Analyseer als swimrun'}</button>`
+        : '';
       return `<div class="activity-pill a-${a.sport || 'other'}" title="${escapeAttr(a.sportLabel || a.sport)}">
         <div class="activity-pill-sport">${icon} ${escapeHtml(a.sportLabel || a.sport)}</div>
         <div class="activity-pill-metrics">${escapeHtml(parts.join(' · ') || '—')}</div>
         ${a.note ? `<div class="activity-pill-metrics" style="font-style:italic">${escapeHtml(a.note)}</div>` : ''}
+        ${swimBtn}
       </div>`;
     }).join('')}</div>` : '';
 
@@ -6029,6 +6052,14 @@ function fitToItem(parsed) {
   if (startTime) { const d = new Date(startTime); if (!isNaN(d)) fpTime = d.toISOString(); }
   const fingerprint = (fpTime || isoDate || '') + '|' + sport + '|' + (totalSec ? Math.round(totalSec) : '');
 
+  // Downsample records naar 10s-intervals voor latere analyse (bv. swimrun).
+  // Alleen voor run-activities — swim/bike hoeven we nu niet, en het bespaart
+  // Gist-ruimte. Elke sample: { t: seconds-vanaf-start, v: km/u, hr, cad(spm) }.
+  let records = null;
+  if (appType === 'run' && Array.isArray(parsed.records) && parsed.records.length > 0) {
+    records = downsampleRecords(parsed.records, 10);
+  }
+
   return {
     datum: isoDate,
     sessie_type: sessieType,
@@ -6039,8 +6070,41 @@ function fitToItem(parsed) {
     _appType: appType,
     _sportLabel: { run: 'Looptraining', bike: 'Fietstraining', swim: 'Zwemtraining', str: 'Krachttraining' }[appType] || (sport ? sport.charAt(0).toUpperCase() + sport.slice(1) : 'Activiteit'),
     _autoMatched: autoMatched,
-    _fingerprint: fingerprint
+    _fingerprint: fingerprint,
+    _records: records
   };
+}
+
+// Neem elke ~intervalSec seconden één sample uit de FIT-records.
+// Retourneert [{ t, v, hr, cad }] met v in km/u en cad in spm (loop-cadans ×2).
+function downsampleRecords(records, intervalSec) {
+  if (!records || !records.length) return null;
+  const t0Raw = records[0].timestamp;
+  const t0 = t0Raw ? new Date(t0Raw).getTime() : null;
+  if (!t0) return null;
+  const out = [];
+  let nextT = 0;
+  for (const r of records) {
+    if (!r.timestamp) continue;
+    const t = Math.round((new Date(r.timestamp).getTime() - t0) / 1000);
+    if (t < nextT) continue;
+    // Neem deze sample
+    let v = null;
+    if (typeof r.speed === 'number') v = r.speed * 3.6;         // m/s → km/u
+    else if (typeof r.enhanced_speed === 'number') v = r.enhanced_speed * 3.6;
+    const hr = (typeof r.heart_rate === 'number') ? r.heart_rate : null;
+    // Cadence: bij running geeft FIT halve cadans (per been), verdubbelen
+    let cad = null;
+    if (typeof r.cadence === 'number') cad = r.cadence * 2;
+    out.push({
+      t,
+      v: v != null ? Math.round(v * 10) / 10 : null,
+      hr,
+      cad
+    });
+    nextT = t + intervalSec;
+  }
+  return out.length ? out : null;
 }
 
 function buildSessieTypeOptions(appType, selected) {
@@ -6131,6 +6195,205 @@ function forceImportFitItem(id) {
   setImportMsg(ready + ' sessie(s) klaar voor import');
 }
 
+// ============================================================
+// SWIMRUN ANALYSE — detecteer zwem/loop-segmenten in een run-activity
+// ============================================================
+// Input: records = [{ t, v, hr, cad }] uit downsampleRecords (10s-interval).
+// Output: { segments: [{type, startT, endT, distanceM, movingSec, totalSec, paceStr}], totals: {...} }
+// User-voorkeur: liever laatste 100m van zwem missen dan pauze meetellen.
+// Stilstand aan de RAND van een swim-segment (net vóór transitie naar loop)
+// wordt weggeknipt; stilstand INGESLOTEN door swim aan beide kanten blijft
+// meetellen als zwem-tijd (moving-pace haalt ze wel uit de snelheids-som).
+function classifySwimrun(records, opts) {
+  opts = opts || {};
+  const minSwimSamples   = opts.minSwimSamples   || 3;  // 30s minimum
+  const maxStillInSwim   = opts.maxStillInSwim   || 2;  // ≤20s stilstand in zwem
+  if (!Array.isArray(records) || records.length < 3) return null;
+
+  // Stap 1: classify per sample
+  const cls = records.map(r => {
+    const v = r.v || 0;
+    const cad = r.cad || 0;
+    if (v < 0.3) return 'still';
+    if (v >= 5 || cad >= 140) return 'run';
+    if (v >= 1 && cad >= 60 && cad < 140) return 'walk';
+    if (v < 4 && cad < 60) return 'swim';
+    return 'walk';  // fallback ambiguous
+  });
+
+  // Stap 2: still-samples ingesloten door swim → wél swim (max maxStillInSwim aaneen)
+  const cls2 = cls.slice();
+  for (let i = 0; i < cls2.length; i++) {
+    if (cls2[i] !== 'still') continue;
+    // Zoek volgende non-still en vorige non-still
+    let j = i;
+    while (j < cls2.length && cls2[j] === 'still') j++;
+    const gapLen = j - i;
+    if (gapLen > maxStillInSwim) { i = j - 1; continue; }
+    const prev = i > 0 ? cls2[i - 1] : null;
+    const next = j < cls2.length ? cls2[j] : null;
+    if (prev === 'swim' && next === 'swim') {
+      for (let k = i; k < j; k++) cls2[k] = 'swim-still'; // marker: tel als zwem-tijd, niet als beweging
+    }
+    i = j - 1;
+  }
+
+  // Stap 3: RLE naar runs
+  const runs = [];
+  let cur = { type: cls2[0], startIdx: 0, endIdx: 0 };
+  for (let i = 1; i < cls2.length; i++) {
+    if (cls2[i] === cur.type) cur.endIdx = i;
+    else { runs.push(cur); cur = { type: cls2[i], startIdx: i, endIdx: i }; }
+  }
+  runs.push(cur);
+
+  // Stap 4: zwem-segmenten pas erkennen als length >= minSwimSamples.
+  // Bij te-korte swim-run: promote naar 'walk' (zodat naastgelegen segmenten door kunnen lopen).
+  const runs2 = runs.map(r => {
+    const len = r.endIdx - r.startIdx + 1;
+    if ((r.type === 'swim' || r.type === 'swim-still') && len < minSwimSamples) {
+      return { ...r, type: 'walk' };
+    }
+    return r;
+  });
+
+  // Stap 5: merge aangrenzende runs met zelfde effectieve type (swim + swim-still = swim)
+  const canon = t => t === 'swim-still' ? 'swim' : t;
+  const merged = [];
+  for (const r of runs2) {
+    const last = merged[merged.length - 1];
+    if (last && canon(last.type) === canon(r.type)) {
+      last.endIdx = r.endIdx;
+      last.type = canon(r.type);
+    } else {
+      merged.push({ ...r, type: canon(r.type) });
+    }
+  }
+
+  // Stap 6: bouw output-segmenten met metrics
+  const intervalSec = (records[1] && records[0]) ? Math.max(1, records[1].t - records[0].t) : 10;
+  const segments = merged.filter(r => r.type !== 'still').map(r => {
+    const seg = records.slice(r.startIdx, r.endIdx + 1);
+    const startT = seg[0].t;
+    const endT   = seg[seg.length - 1].t + intervalSec;
+    const totalSec = endT - startT;
+    let distanceM = 0;
+    let movingSec = 0;
+    let hrSum = 0, hrCount = 0;
+    for (const s of seg) {
+      if (s.v && s.v > 0.3) {
+        distanceM += (s.v * 1000 / 3600) * intervalSec;
+        movingSec += intervalSec;
+      }
+      if (s.hr) { hrSum += s.hr; hrCount++; }
+    }
+    const hrAvg = hrCount ? Math.round(hrSum / hrCount) : null;
+    let paceStr = null;
+    if (r.type === 'swim' && distanceM >= 20 && movingSec > 0) {
+      const sPer100m = movingSec / (distanceM / 100);
+      paceStr = fmtPace(sPer100m) + '/100m';
+    } else if (r.type === 'run' && distanceM >= 100 && movingSec > 0) {
+      const sPerKm = movingSec / (distanceM / 1000);
+      paceStr = fmtPace(sPerKm) + '/km';
+    } else if (r.type === 'walk' && distanceM >= 50 && movingSec > 0) {
+      const sPerKm = movingSec / (distanceM / 1000);
+      paceStr = fmtPace(sPerKm) + '/km';
+    }
+    return {
+      type: r.type,
+      startT, endT,
+      distanceM: Math.round(distanceM),
+      movingSec, totalSec,
+      paceStr,
+      hrAvg
+    };
+  });
+
+  // Totalen per type
+  const totals = { run: {d:0,t:0}, walk: {d:0,t:0}, swim: {d:0,t:0}, transitionSec: 0 };
+  let prevType = null;
+  for (const s of segments) {
+    if (s.type in totals) {
+      totals[s.type].d += s.distanceM;
+      totals[s.type].t += s.movingSec;
+    }
+    // Ruwe transitie: walk-segmenten tussen swim en run beschouwen we als transitie
+    if (s.type === 'walk' && (prevType === 'swim' || prevType === 'run')) {
+      totals.transitionSec += s.totalSec;
+    }
+    prevType = s.type;
+  }
+  return { segments, totals, minSwimSamples, maxStillInSwim, generatedAt: new Date().toISOString() };
+}
+
+function fmtPace(sec) {
+  if (!sec || !isFinite(sec)) return '—';
+  const mm = Math.floor(sec / 60);
+  const ss = Math.round(sec % 60);
+  return mm + ':' + String(ss).padStart(2, '0');
+}
+function fmtDur(sec) {
+  if (!sec) return '—';
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    return h + 'u ' + (m % 60) + 'm';
+  }
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+async function runSwimrunAnalysis(activityId) {
+  const idx = (state.activities || []).findIndex(a => a.id === activityId);
+  if (idx < 0) return;
+  const act = state.activities[idx];
+  if (!Array.isArray(act.records) || act.records.length < 3) {
+    alert('Geen tijdreeks-data voor deze activiteit — opnieuw importeren via de agent nodig (verwijder de activityId uit imported-ids.json en laat de agent draaien).');
+    return;
+  }
+  const result = classifySwimrun(act.records);
+  if (!result) { alert('Analyse mislukt.'); return; }
+  act.swimrunAnalysis = result;
+  await saveState();
+  openSwimrunModal(activityId);
+}
+
+function openSwimrunModal(activityId) {
+  const act = (state.activities || []).find(a => a.id === activityId);
+  if (!act || !act.swimrunAnalysis) return;
+  const a = act.swimrunAnalysis;
+  const sportIcon = { run: '🏃', swim: '🏊', walk: '🚶' };
+  const rows = a.segments.map((s, i) => {
+    const icon = sportIcon[s.type] || '·';
+    const startMin = Math.floor(s.startT / 60);
+    return '<tr>' +
+      '<td>' + icon + ' ' + s.type + '</td>' +
+      '<td>' + (s.distanceM >= 1000 ? (s.distanceM/1000).toFixed(2) + ' km' : s.distanceM + ' m') + '</td>' +
+      '<td>' + fmtDur(s.totalSec) + (s.movingSec !== s.totalSec ? ' <span style="color:#888;font-size:11px">(mov ' + fmtDur(s.movingSec) + ')</span>' : '') + '</td>' +
+      '<td>' + (s.paceStr || '—') + '</td>' +
+      '<td>' + (s.hrAvg ? s.hrAvg : '—') + '</td>' +
+      '<td style="color:#888;font-size:11px">@ ' + startMin + 'm</td>' +
+    '</tr>';
+  }).join('');
+  const t = a.totals;
+  const totalsHtml =
+    '<div style="margin-top:12px;padding:8px 10px;background:#f5f5f5;border-radius:6px;font-size:13px">' +
+    '<div>🏃 Loop totaal: <strong>' + (t.run.d/1000).toFixed(2) + ' km · ' + fmtDur(t.run.t) + '</strong>' +
+      (t.run.t ? ' · ' + fmtPace(t.run.t / (t.run.d/1000)) + '/km' : '') + '</div>' +
+    '<div>🏊 Zwem totaal: <strong>' + t.swim.d + ' m · ' + fmtDur(t.swim.t) + '</strong>' +
+      (t.swim.t && t.swim.d ? ' · ' + fmtPace(t.swim.t / (t.swim.d/100)) + '/100m' : '') + '</div>' +
+    (t.walk.d > 0 ? '<div>🚶 Wandelen: <strong>' + t.walk.d + ' m · ' + fmtDur(t.walk.t) + '</strong></div>' : '') +
+    (t.transitionSec > 0 ? '<div>🔄 Transities: <strong>' + fmtDur(t.transitionSec) + '</strong></div>' : '') +
+    '</div>';
+  document.getElementById('swimrunTitle').textContent = 'Swimrun-analyse — ' + (act.sportLabel || act.sport) + ' · ' + act.date;
+  document.getElementById('swimrunBody').innerHTML =
+    '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="border-bottom:1px solid #ddd;text-align:left"><th>Type</th><th>Afstand</th><th>Duur</th><th>Pace</th><th>HR</th><th>Start</th></tr></thead><tbody>' +
+    rows + '</tbody></table>' + totalsHtml;
+  document.getElementById('swimrunModal').classList.add('active');
+}
+function closeSwimrunModal() { document.getElementById('swimrunModal').classList.remove('active'); }
+function onSwimrunBgClick(e) { if (e.target.id === 'swimrunModal') closeSwimrunModal(); }
+
 async function processFitImport() {
   const toImport = fitItems.filter(x => x.status === 'ready' && x.item && x.item.datum);
   if (toImport.length === 0) {
@@ -6155,9 +6418,19 @@ async function processFitImport() {
       metrics: item.metrics || {},
       note: (item.feedback && item.feedback.trim()) || ''
     };
+    // Records (10s-samples) alleen bewaren als aanwezig — nodig voor swimrun-analyse.
+    if (Array.isArray(item._records) && item._records.length > 0) {
+      activity.records = item._records;
+    }
     const existing = state.activities.findIndex(a => a.id === activity.id);
-    if (existing >= 0) state.activities[existing] = activity;
-    else state.activities.push(activity);
+    if (existing >= 0) {
+      // Bewaar bestaande swimrunAnalysis als 'ie er is (nieuwe records → nieuwe analyse)
+      const prev = state.activities[existing];
+      if (prev.swimrunAnalysis && !activity.records) activity.swimrunAnalysis = prev.swimrunAnalysis;
+      state.activities[existing] = activity;
+    } else {
+      state.activities.push(activity);
+    }
     added++;
     if (!firstWeekId) {
       const wd = findWeekAndDay(item.datum);
