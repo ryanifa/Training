@@ -3296,7 +3296,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 115;
+const APP_VERSION = 116;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -6585,15 +6585,22 @@ function refreshSwimrunMapMarkers() {
   for (const m of ctx.intervalMarkers) { try { ctx.map.removeLayer(m); } catch (_) {} }
   ctx.intervalMarkers = [];
   const findPt = (t) => pts.reduce((best, p) => (Math.abs(p.t - t) < Math.abs(best.t - t) ? p : best), pts[0]);
+  const makeNumIcon = (num, bg) => L.divIcon({
+    className: 'swim-num-marker',
+    html: '<div style="background:' + bg + ';color:#fff;border:2px solid #000;border-radius:50%;width:26px;height:26px;line-height:22px;text-align:center;font-weight:bold;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,0.5)">' + num + '</div>',
+    iconSize: [26, 26],
+    iconAnchor: [13, 13]
+  });
   ctx.tempSegs.forEach((seg, idx) => {
+    const num = idx + 1;
     const startPt = findPt(seg.startT);
-    const startMarker = L.circleMarker([startPt.lat, startPt.lon], { radius: 8, color: '#000', weight: 2, fillColor: '#1D9E75', fillOpacity: 1 })
-      .bindTooltip('Zwem ' + (idx + 1) + ' start (' + fmtDur(seg.startT) + ')').addTo(ctx.map);
+    const startMarker = L.marker([startPt.lat, startPt.lon], { icon: makeNumIcon(num, '#1D9E75') })
+      .bindTooltip('Zwem ' + num + ' START (' + fmtDur(seg.startT) + ')').addTo(ctx.map);
     ctx.intervalMarkers.push(startMarker);
     if (seg.endT != null) {
       const endPt = findPt(seg.endT);
-      const endMarker = L.circleMarker([endPt.lat, endPt.lon], { radius: 8, color: '#000', weight: 2, fillColor: '#c62828', fillOpacity: 1 })
-        .bindTooltip('Zwem ' + (idx + 1) + ' eind (' + fmtDur(seg.endT) + ')').addTo(ctx.map);
+      const endMarker = L.marker([endPt.lat, endPt.lon], { icon: makeNumIcon(num, '#c62828') })
+        .bindTooltip('Zwem ' + num + ' EIND (' + fmtDur(seg.endT) + ')').addTo(ctx.map);
       ctx.intervalMarkers.push(endMarker);
       // Highlight de swim-portie van de polyline
       const swimPts = pts.filter(p => p.t >= seg.startT && p.t <= seg.endT).map(p => [p.lat, p.lon]);
