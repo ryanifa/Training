@@ -3296,7 +3296,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 109;
+const APP_VERSION = 110;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -6088,10 +6088,11 @@ function downsampleRecords(records, intervalSec) {
     if (!r.timestamp) continue;
     const t = Math.round((new Date(r.timestamp).getTime() - t0) / 1000);
     if (t < nextT) continue;
-    // Neem deze sample
+    // Neem deze sample. Parser is geconfigureerd met speedUnit: 'km/h',
+    // dus geen conversie — anders zit alles er factor 3.6 naast.
     let v = null;
-    if (typeof r.speed === 'number') v = r.speed * 3.6;         // m/s → km/u
-    else if (typeof r.enhanced_speed === 'number') v = r.enhanced_speed * 3.6;
+    if (typeof r.speed === 'number') v = r.speed;
+    else if (typeof r.enhanced_speed === 'number') v = r.enhanced_speed;
     const hr = (typeof r.heart_rate === 'number') ? r.heart_rate : null;
     // Cadence: bij running geeft FIT halve cadans (per been), verdubbelen
     let cad = null;
