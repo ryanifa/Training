@@ -3296,7 +3296,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 117;
+const APP_VERSION = 116;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3938,24 +3938,7 @@ function buildCoachSystemPrompt() {
     const wd = findWeekAndDay(a.date);
     const wk = wd ? wd.weekId : 'buiten-seizoen';
     if (!activitiesByWeek[wk]) activitiesByWeek[wk] = [];
-    // Strip records (te veel tokens); swimrunAnalysis wél mee voor coach-context
-    const slim = {
-      id: a.id, date: a.date, sport: a.sport, sportLabel: a.sportLabel,
-      metrics: a.metrics, note: a.note
-    };
-    if (a.swimrunAnalysis) {
-      const sa = a.swimrunAnalysis;
-      slim.swimrun = {
-        segments: (sa.segments || []).map(s => ({
-          type: s.type, startT: s.startT, endT: s.endT,
-          distanceM: s.distanceM, movingSec: s.movingSec, totalSec: s.totalSec,
-          paceStr: s.paceStr, hrAvg: s.hrAvg,
-          manualDistance: !!s.manualDistance
-        })),
-        totals: sa.totals
-      };
-    }
-    activitiesByWeek[wk].push(slim);
+    activitiesByWeek[wk].push(a);
   });
   const stateCtx = {
     garmin_activiteiten: activitiesByWeek,
@@ -3985,7 +3968,7 @@ WEEKSCHEMA — weekId → { label, start(=maandag), dagen{ ma..zo → [sessionId
 ${JSON.stringify(plan.schema)}
 
 DATAVELDEN in zijn voortgang (JSON):
-- garmin_activiteiten: { weekId: [{ id, date, sport, sportLabel, metrics:{ duur_min, afstand_km, hr_gem, hr_max, pace_gem, vermogen_gem_w, ... }, note, swimrun? }] } — daadwerkelijk uitgevoerde activiteiten uit Garmin, gegroepeerd per week. BRON VAN WAARHEID voor wat hij deed. Optioneel veld `swimrun` (alleen bij als-swimrun geanalyseerde activiteiten): { segments:[{type:'swim'|'run'|'walk', startT, endT (seconden vanaf start), distanceM, movingSec, totalSec, paceStr, hrAvg, manualDistance:bool}], totals:{run:{d,t}, swim:{d,t}, walk:{d,t}, transitionSec} }. Interpretatie: als een run-activity een `swimrun` blok heeft, is 't in werkelijkheid een swimrun met afwisselende zwem/loop-segmenten. Neem zwem-tijd/afstand mee in trainingsbelasting-analyses (bv. totale zwem-volume per week telt op vanuit swim-segments). manualDistance=true betekent user heeft de afstand handmatig ingevuld (GPS drift correctie); dan is paceStr op basis van totalSec i.p.v. movingSec.
+- garmin_activiteiten: { weekId: [{ id, date, sport, sportLabel, metrics:{ duur_min, afstand_km, hr_gem, hr_max, pace_gem, vermogen_gem_w, ... }, note }] } — daadwerkelijk uitgevoerde activiteiten uit Garmin, gegroepeerd per week. Dit is de BRON VAN WAARHEID voor wat hij daadwerkelijk heeft gedaan.
 - rustdagen: { "weekId:dayIndex": true } bewuste rustdagen (geen gemiste training, maar herstelkeuze)
 - verplaatsingen: sessies handmatig verschoven naar een andere dag binnen de week
 - overgeslagen: sessies die zijn vervangen of weggelaten
@@ -6809,23 +6792,9 @@ async function processFitImport() {
     }
     const existing = state.activities.findIndex(a => a.id === activity.id);
     if (existing >= 0) {
+      // Bewaar bestaande swimrunAnalysis als 'ie er is (nieuwe records → nieuwe analyse)
       const prev = state.activities[existing];
-      // Bewaar user-input over re-imports heen:
-      //  - manualSwimSegments (jouw klik-selectie) blijft ALTIJD
-      //  - swimrunAnalysis blijft; als er nieuwe records zijn + segments →
-      //    herbereken zodat pace/afstand up-to-date is met de nieuwe track
-      if (prev.manualSwimSegments && prev.manualSwimSegments.length > 0) {
-        activity.manualSwimSegments = prev.manualSwimSegments;
-        if (activity.records) {
-          activity.swimrunAnalysis = buildSwimrunFromManual(activity.records, prev.manualSwimSegments);
-        } else if (prev.swimrunAnalysis) {
-          activity.swimrunAnalysis = prev.swimrunAnalysis;
-        }
-      } else if (prev.swimrunAnalysis) {
-        activity.swimrunAnalysis = prev.swimrunAnalysis;
-      }
-      // Bewaar ook eventuele user-note als de nieuwe import 'em niet meegeeft
-      if (prev.note && !activity.note) activity.note = prev.note;
+      if (prev.swimrunAnalysis && !activity.records) activity.swimrunAnalysis = prev.swimrunAnalysis;
       state.activities[existing] = activity;
     } else {
       state.activities.push(activity);
