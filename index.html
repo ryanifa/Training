@@ -457,7 +457,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 <div class="header">
   <div class="header-row">
     <div style="min-width:0">
-      <h1>Trainingsoverzicht — Ryan Douglas</h1>
+      <h1 id="headerTitle">Trainingsoverzicht — Ryan Douglas</h1>
       <div class="sub sub-long" id="subLong">Seizoen 2026</div>
       <div class="sub sub-short" id="subShort">Seizoen 2026</div>
     </div>
@@ -573,6 +573,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
     <div class="coach-header">
       <div>💬 Coach <span class="coach-model" id="coachModelLabel"></span></div>
       <div style="display:flex;gap:4px">
+        <button class="coach-icon-btn" onclick="openAthleteProfile()" title="Atleetprofiel bewerken">👤</button>
         <button class="coach-icon-btn" onclick="clearCoachChat()" title="Geschiedenis wissen">🗑</button>
         <button class="coach-icon-btn" onclick="openCoachSettings()" title="Instellingen">⚙</button>
       </div>
@@ -623,39 +624,7 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 
 <!-- DOELEN -->
 <div id="doelen" class="page">
-  <div class="goal-card">
-    <h3>🏊🚴🏃 70.3 Luxemburg — 11 juli 2026</h3>
-    <div class="split-row">
-      <div class="split-seg" style="flex:2;background:#E1F5EE;color:#0F6E56"><div class="seg-name">ZWEM 1,9 km</div><div class="seg-time">30–33</div><div class="seg-detail">1:35–1:45/100m · Z2</div></div>
-      <div class="split-seg" style="flex:0.5;background:#F1EFE8;color:#5F5E5A"><div class="seg-name">T1+T2</div><div class="seg-time">4</div><div class="seg-detail">&lt;4 min</div></div>
-      <div class="split-seg" style="flex:3;background:#E6F1FB;color:#185FA5"><div class="seg-name">FIETS 90 km</div><div class="seg-time">2:30–2:45</div><div class="seg-detail">178–213W · 90 rpm</div></div>
-      <div class="split-seg" style="flex:2.5;background:#FAEEDA;color:#854F0B"><div class="seg-name">LOOP 21,1 km</div><div class="seg-time">1:52–2:00</div><div class="seg-detail">5:20–5:41/km · Z3</div></div>
-    </div>
-    <div style="text-align:center;margin-top:10px;font-size:18px;font-weight:bold;color:#0f3460">Streefdoel: 4:55–5:15 · Vangnet: sub 5:30</div>
-  </div>
-  <div class="goal-card">
-    <h3>🌊 IJsselmeer 22 km — 30 augustus 2026</h3>
-    <div class="goal-row"><span>Doel</span><span class="goal-val">Finishen</span></div>
-    <div class="goal-row"><span>Strategie</span><span class="goal-val">Eerste 15 km Z2 · laatste 5 km mag Z3</span></div>
-    <div class="goal-row"><span>Voeding</span><span class="goal-val">Elke 45 min gel in wetsuit pocket</span></div>
-  </div>
-  <div class="goal-card">
-    <h3>🏊🚴🏃 Zwarte Plasje ¼ triathlon — 13 september 2026</h3>
-    <div class="split-row">
-      <div class="split-seg" style="flex:2;background:#E1F5EE;color:#0F6E56"><div class="seg-name">ZWEM 1 km</div><div class="seg-time">17–18</div><div class="seg-detail">1:35–1:45/100m · Z3/Z4</div></div>
-      <div class="split-seg" style="flex:0.5;background:#F1EFE8;color:#5F5E5A"><div class="seg-name">T1+T2</div><div class="seg-time">3</div><div class="seg-detail">&lt;3 min</div></div>
-      <div class="split-seg" style="flex:3;background:#E6F1FB;color:#185FA5"><div class="seg-name">FIETS 40 km</div><div class="seg-time">1:05</div><div class="seg-detail">213–249W · 90+ rpm</div></div>
-      <div class="split-seg" style="flex:2;background:#FAEEDA;color:#854F0B"><div class="seg-name">LOOP 10 km</div><div class="seg-time">48</div><div class="seg-detail">4:45/km · Z4</div></div>
-    </div>
-    <div style="text-align:center;margin-top:10px;font-size:18px;font-weight:bold;color:#0f3460">Streefdoel: 2:10–2:15 · Strategie: Z3/Z4 race-pace</div>
-  </div>
-  <div class="goal-card">
-    <h3>🏃 Herfstmarathon — 1 november 2026</h3>
-    <div class="goal-row"><span>Doel</span><span class="goal-val">Sub 3:30:00 · 4:58/km</span></div>
-    <div class="goal-row"><span>Eerste helft</span><span class="goal-val">1:46 (5:01/km)</span></div>
-    <div class="goal-row"><span>Tweede helft</span><span class="goal-val">1:44 (4:55/km)</span></div>
-    <div class="goal-row"><span>HR target</span><span class="goal-val">Z3/lage Z4 (151–168 bpm)</span></div>
-  </div>
+  <div id="doelenContent"></div>
 </div>
 
 <!-- STATUS -->
@@ -1006,6 +975,27 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
       <div style="flex:1"></div>
       <button class="modal-btn" onclick="closeReassign()">Annuleren</button>
       <button class="modal-btn modal-btn-primary" onclick="doReassign()">Toepassen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ATLEETPROFIEL MODAL -->
+<div class="modal-overlay" id="athleteProfileModal" onclick="onAthleteProfileBgClick(event)">
+  <div class="modal-box" style="max-width:640px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">👤 Atleetprofiel</div>
+        <div class="modal-sub">Vrije markdown-tekst — wordt in élke coach-prompt meegestuurd als leidende context (achtergrond, streefdoelen, blessures, voorkeuren).</div>
+      </div>
+      <button class="modal-close" onclick="closeAthleteProfile()">×</button>
+    </div>
+    <div class="modal-body">
+      <textarea id="athleteProfileText" class="modal-textarea" placeholder="Bijv.:&#10;&#10;# Ryan Douglas&#10;- 44 jaar, triathlon-focus 70.3 en OWZ&#10;- FTP: 260W · Drempelpace loop: 4:15/km · Zwem: 1:35/100m&#10;- Blessuregevoelig: onderrug — vermijd zware deadlifts&#10;- Beschikbaarheid: 10–12u/week&#10;&#10;## Doelen&#10;- A: 70.3 Luxemburg sub 5:15&#10;- A: Zwarte Plasje ¼ triathlon 2:10&#10;- B: IJsselmeer 22 km finishen" style="font-family:monospace;font-size:12px;min-height:320px;white-space:pre;word-wrap:normal;overflow-wrap:normal"></textarea>
+      <div class="modal-meta" id="athleteProfileMsg" style="margin-top:6px;min-height:16px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn" onclick="closeAthleteProfile()">Annuleer</button>
+      <button class="modal-btn modal-btn-primary" onclick="saveAthleteProfile()">💾 Opslaan naar Gist</button>
     </div>
   </div>
 </div>
@@ -1444,7 +1434,7 @@ const DEFAULT_SESSIONS = {
 // ============================================================
 // SEIZOEN EVENTS
 // ============================================================
-const EVENTS = [
+const DEFAULT_EVENTS = [
   { sid:'race_brouwersdam',   date:'2026-05-09', name:'Brouwersdam 90 — ¼ triathlon', detail:'Zwem Z2 · Fiets eerste 40km Z2 dan Z3 · Loop Z3 · Noteer T1+T2', tier:'B' },
   { sid:'race_oversteek',     date:'2026-05-30', name:'De Oversteek — 3 km OWZ', detail:'Volledig Z2 · sighting oefenen · geen race', tier:'B' },
   { sid:'race_oud_gastel',    date:'2026-06-13', name:'Oud Gastel — ⅓ triathlon', detail:'Generale 70.3 · alles uitvoeren als racedag · analyseer achteraf', tier:'B' },
@@ -1461,6 +1451,14 @@ const EVENTS = [
   { sid:'race_zwarte_plasje', date:'2026-09-13', name:'🏆 Zwarte Plasje ¼ triathlon', detail:'Z3/Z4 alles geven · Zwem 1000m · Fiets 40km @ 213–249W · Loop 10km @ 4:45/km', tier:'A' },
   { sid:'race_marathon',      date:'2026-11-01', name:'🏆 Herfstmarathon', detail:'Doel: sub 3:30 · eerste helft 1:46 · tweede helft 1:44', tier:'A' },
 ];
+
+// Actieve events uit het geladen plan; valt terug op DEFAULT_EVENTS. Alle
+// UI-code leest via deze helper zodat een events-lijst in de Gist automatisch
+// leidend is (renderSeason, updateNextRaceSub, Doelen-pagina).
+function getEvents() {
+  if (activePlan && Array.isArray(activePlan.events)) return activePlan.events;
+  return DEFAULT_EVENTS;
+}
 
 // Zoekt de huidige datum van een sessie-ID in het actieve plan (weekPlans).
 // Retourneert ISO-datum of null als de sessie nergens in het plan staat.
@@ -1523,7 +1521,7 @@ function renderSeason() {
   const upcoming = [];
   const past = [];
 
-  EVENTS.forEach(e => {
+  getEvents().forEach(e => {
     const planDate = e.sid ? getPlanDateForSession(e.sid) : null;
     const effectiveDate = planDate || e.date;
     const daysUntil = getDaysUntil(effectiveDate);
@@ -1534,10 +1532,10 @@ function renderSeason() {
   });
 
   // Auto-ontdek extra race/event-sessies die in het plan staan maar niet
-  // in EVENTS. Coach- of editor-toegevoegde events worden zo automatisch
+  // in events. Coach- of editor-toegevoegde events worden zo automatisch
   // zichtbaar in het seizoen-overzicht.
   const knownSids = {};
-  EVENTS.forEach(e => { if (e.sid) knownSids[e.sid] = true; });
+  getEvents().forEach(e => { if (e.sid) knownSids[e.sid] = true; });
   if (activePlan && activePlan.weekPlans && activePlan.sessions) {
     Object.keys(activePlan.weekPlans).forEach(wk => {
       (activePlan.weekPlans[wk] || []).forEach((day) => {
@@ -1624,6 +1622,71 @@ function renderEventCard(e, isPast) {
     '</div>' +
     '<span class="event-badge ' + badgeClass + '">' + e.tier + '</span>' +
   '</div>';
+}
+
+// Rendert de Doelen-pagina uit activePlan.events, gesorteerd op datum.
+// A-races tonen hun `goal` prominent; voorbije events krijgen een eigen
+// gedempte sectie. Fallback op DEFAULT_EVENTS via getEvents().
+function renderDoelen() {
+  const container = document.getElementById('doelenContent');
+  if (!container) return;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const events = getEvents().slice()
+    .map(e => {
+      const planDate = e.sid ? getPlanDateForSession(e.sid) : null;
+      return Object.assign({}, e, { effectiveDate: planDate || e.date });
+    })
+    .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate));
+
+  const upcoming = events.filter(e => new Date(e.effectiveDate) >= today);
+  const past = events.filter(e => new Date(e.effectiveDate) < today).reverse();
+
+  const nlLongDate = (iso) => {
+    const d = parseDate(iso);
+    if (!d || isNaN(d)) return iso;
+    return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  const cardHtml = (e, isPast) => {
+    const tier = (e.tier === 'A' || e.tier === 'B' || e.tier === 'C') ? e.tier : 'C';
+    const tierLetter = tier.toLowerCase();
+    const badgeClass = 'badge-' + tierLetter;
+    const borderClass = 'border-' + tierLetter;
+    const dim = isPast ? 'opacity:0.55;' : '';
+    const nameLbl = (e.sid && SESSIONS[e.sid] && SESSIONS[e.sid].label) ? SESSIONS[e.sid].label : e.name;
+    const goalBlock = (tier === 'A' && e.goal)
+      ? '<div style="margin-top:10px;padding:10px 12px;background:#F5F0FF;border-left:4px solid #9C68C6;border-radius:0 6px 6px 0;font-size:14px;line-height:1.5;white-space:pre-wrap">' + escapeHtml(e.goal) + '</div>'
+      : (e.goal ? '<div style="margin-top:8px;color:#555;font-size:13px;white-space:pre-wrap">' + escapeHtml(e.goal) + '</div>' : '');
+    const detailBlock = e.detail
+      ? '<div style="margin-top:6px;color:#666;font-size:12px;white-space:pre-wrap">' + escapeHtml(e.detail) + '</div>'
+      : '';
+    return '<div class="event-card ' + borderClass + '" style="' + dim + (tier === 'A' ? 'border-width:3px;' : '') + 'flex-direction:column;align-items:stretch">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div class="event-name" style="font-size:15px">' + escapeHtml(nameLbl) + '</div>' +
+          '<div style="font-size:12px;color:#666;margin-top:2px">' + escapeHtml(nlLongDate(e.effectiveDate)) + '</div>' +
+        '</div>' +
+        '<span class="event-badge ' + badgeClass + '">' + tier + '</span>' +
+      '</div>' +
+      goalBlock + detailBlock +
+    '</div>';
+  };
+
+  let html = '';
+  if (upcoming.length > 0) {
+    html += '<div class="phase-title">Doelen (' + upcoming.length + ')</div><div class="season-grid">';
+    upcoming.forEach(e => { html += cardHtml(e, false); });
+    html += '</div>';
+  } else {
+    html += '<div class="modal-meta" style="margin:16px 0;color:#888">Geen aanstaande events in het plan.</div>';
+  }
+  if (past.length > 0) {
+    html += '<div style="height:1px;background:#ddd;margin:24px 0 16px 0"></div>';
+    html += '<div class="phase-title">Voltooid (' + past.length + ')</div><div class="season-grid">';
+    past.forEach(e => { html += cardHtml(e, true); });
+    html += '</div>';
+  }
+  container.innerHTML = html;
 }
 
 // Verzet een race naar een nieuwe datum — datum is leidend, het juiste
@@ -1930,7 +1993,15 @@ const DEFAULT_PLAN = {
       wp[m.id] = plan.map(day => day.slice());
     });
     return wp;
-  })()
+  })(),
+  // Events (races/doelen). Migrable: als een geladen plan geen events heeft,
+  // vult normalizePlanWeeks aan uit deze default.
+  events: DEFAULT_EVENTS.map(e => Object.assign({}, e)),
+  // Atleetprofiel (markdown). Wordt in coach-context meegestuurd zodat de
+  // coach doelen/streeftijden/huidige status kent. Leeg = geen profiel.
+  profile: '',
+  // Seizoenskop — als aanwezig, gebruik voor h1 + subtitle in de header.
+  season: { title: 'Trainingsoverzicht — Ryan Douglas', subtitle: 'Seizoen 2026' }
 };
 
 // Runtime-accessors — afgeleid van het actieve plan via applyPlan.
@@ -2240,17 +2311,37 @@ function planContentHash(plan) {
   return hashStr(JSON.stringify({ meta: plan.meta, sessions: plan.sessions, weekPlans: plan.weekPlans }));
 }
 function serializePlan(plan, source, defaultHash) {
-  return {
+  const out = {
     _meta: { updatedAt: new Date().toISOString(), source: source, defaultHash: defaultHash },
     version: plan.version || 1,
     meta: plan.meta,
     sessions: plan.sessions,
     weekPlans: plan.weekPlans
   };
+  // Optionele plan-velden meebewaren als ze aanwezig zijn (backwards compat).
+  if (plan.events !== undefined)  out.events  = plan.events;
+  if (plan.profile !== undefined) out.profile = plan.profile;
+  if (plan.season !== undefined)  out.season  = plan.season;
+  return out;
 }
 function isValidPlan(p) {
-  return !!(p && p.sessions && typeof p.sessions === 'object'
-    && Array.isArray(p.meta) && p.weekPlans && typeof p.weekPlans === 'object');
+  if (!(p && p.sessions && typeof p.sessions === 'object'
+    && Array.isArray(p.meta) && p.weekPlans && typeof p.weekPlans === 'object')) return false;
+  // Events zijn optioneel; als aanwezig, valideer elk item.
+  if (p.events !== undefined) {
+    if (!Array.isArray(p.events)) return false;
+    for (const e of p.events) {
+      if (!e || typeof e !== 'object') return false;
+      if (typeof e.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(e.date)) return false;
+      if (typeof e.name !== 'string' || !e.name.trim()) return false;
+      if (e.tier !== 'A' && e.tier !== 'B' && e.tier !== 'C') return false;
+    }
+  }
+  // Profile is optioneel maar moet string zijn als aanwezig.
+  if (p.profile !== undefined && typeof p.profile !== 'string') return false;
+  // Season is optioneel; als aanwezig, verwacht een object.
+  if (p.season !== undefined && (p.season === null || typeof p.season !== 'object')) return false;
+  return true;
 }
 
 // Vul aan wat in DEFAULT_PLAN zit maar in dit plan ontbreekt: zowel weken
@@ -2261,6 +2352,19 @@ function isValidPlan(p) {
 function normalizePlanWeeks(plan) {
   if (!plan || !Array.isArray(plan.meta) || !plan.weekPlans) return false;
   let changed = false;
+  // Vul events/profile/season aan uit DEFAULT_PLAN als ze ontbreken.
+  if (!Array.isArray(plan.events) && Array.isArray(DEFAULT_PLAN.events)) {
+    plan.events = DEFAULT_PLAN.events.map(e => Object.assign({}, e));
+    changed = true;
+  }
+  if (plan.profile === undefined) {
+    plan.profile = DEFAULT_PLAN.profile || '';
+    changed = true;
+  }
+  if (!plan.season || typeof plan.season !== 'object') {
+    plan.season = Object.assign({}, DEFAULT_PLAN.season || {});
+    changed = true;
+  }
   // Index bestaande meta-entries en synchroniseer start/label met DEFAULT_PLAN
   // (de week-datums zijn vaste kalenderdata; afwijkingen heelen we hier).
   const metaById = {};
@@ -2860,12 +2964,18 @@ async function planSyncUI() {
 // PLAN EDITOR (ruwe JSON) — schrijft naar Gist als 'user-edited'
 // ============================================================
 function planEditableContent() {
-  return {
+  const out = {
     version: (activePlan && activePlan.version) || 1,
     meta: activePlan.meta,
     sessions: activePlan.sessions,
     weekPlans: activePlan.weekPlans
   };
+  if (activePlan) {
+    if (Array.isArray(activePlan.events))  out.events  = activePlan.events;
+    if (typeof activePlan.profile === 'string') out.profile = activePlan.profile;
+    if (activePlan.season && typeof activePlan.season === 'object') out.season = activePlan.season;
+  }
+  return out;
 }
 function setPlanEditorMsg(msg, type) {
   const el = document.getElementById('planEditorMsg');
@@ -2899,7 +3009,9 @@ function rerenderAfterPlan() {
   try { renderWeek(activeWeek); } catch(e) {}
   try { renderToday(); } catch(e) {}
   try { renderSeason(); } catch(e) {}
+  try { renderDoelen(); } catch(e) {}
   try { renderStatus(); } catch(e) {}
+  try { renderSeasonHeader(); } catch(e) {}
 }
 
 async function savePlanFromEditor() {
@@ -3285,6 +3397,7 @@ function showPage(id, btn) {
   if(id === 'week') renderWeek(activeWeek);
   if(id === 'status') renderStatus();
   if(id === 'seizoen') renderSeason();
+  if(id === 'doelen') renderDoelen();
   if(id === 'kracht') initStrengthPage();
   if(id === 'coach') initCoachPage();
 }
@@ -3296,7 +3409,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 118;
+const APP_VERSION = 119;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3356,8 +3469,24 @@ function startUpdateChecker() {
   });
 }
 
+// Zet de h1-title uit plan.season.title (fallback op de bestaande tekst).
+// De subtitle wordt door updateNextRaceSub gevuld met de eerstvolgende race;
+// als er GEEN aanstaande race is valt 'ie terug op plan.season.subtitle.
+function renderSeasonHeader() {
+  const titleEl = document.getElementById('headerTitle');
+  const season = (activePlan && activePlan.season && typeof activePlan.season === 'object') ? activePlan.season : {};
+  if (titleEl && season.title && typeof season.title === 'string') {
+    titleEl.textContent = season.title;
+  }
+}
+
+function seasonSubtitleFallback() {
+  const season = (activePlan && activePlan.season && typeof activePlan.season === 'object') ? activePlan.season : {};
+  return (season.subtitle && typeof season.subtitle === 'string') ? season.subtitle : 'Seizoen 2026';
+}
+
 function updateNextRaceSub() {
-  // Korte namen voor de header (de lange in EVENTS zijn te breed)
+  // Korte namen voor de header (de lange in events zijn te breed)
   const SHORT = {
     race_oversteek: 'De Oversteek', race_oud_gastel: 'Oud Gastel',
     race_swimrun_ams: 'Swimrun A\'dam', race_utrecht: 'Utrecht ⅓',
@@ -3368,14 +3497,15 @@ function updateNextRaceSub() {
     race_zwarte_plasje: 'Zwarte Plasje', race_marathon: 'Marathon'
   };
   const today = new Date(); today.setHours(0,0,0,0);
-  const dated = EVENTS
+  const dated = getEvents()
     .map(e => ({ sid: e.sid, date: (e.sid && getPlanDateForSession(e.sid)) || e.date, name: SHORT[e.sid] || e.name, tier: getEffectiveTier(e.sid, e.tier) }))
     .filter(r => new Date(r.date) >= today)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
   const next = dated[0];
+  const seasonFallback = seasonSubtitleFallback();
   const el = document.getElementById('subShort');
   if (el) {
-    if (!next) { el.textContent = 'Seizoen 2026'; }
+    if (!next) { el.textContent = seasonFallback; }
     else {
       const days = Math.round((new Date(next.date) - today) / 86400000);
       const dateNL = new Date(next.date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
@@ -3386,9 +3516,9 @@ function updateNextRaceSub() {
   const elLong = document.getElementById('subLong');
   if (elLong) {
     const aRaces = dated.filter(r => r.tier === 'A');
-    if (aRaces.length === 0) elLong.textContent = 'Seizoen 2026';
+    if (aRaces.length === 0) elLong.textContent = seasonFallback;
     else {
-      elLong.textContent = 'Seizoen 2026 · ' + aRaces.map(r => {
+      elLong.textContent = seasonFallback + ' · ' + aRaces.map(r => {
         const d = new Date(r.date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
         return r.name + ' ' + d;
       }).join(' · ');
@@ -3867,7 +3997,7 @@ function buildPlanContext() {
   const sessions = {};
   Object.keys(SESSIONS).forEach(id => {
     const s = SESSIONS[id];
-    sessions[id] = {
+    const obj = {
       type: s.type,
       label: s.label,
       dur: s.dur,
@@ -3879,6 +4009,9 @@ function buildPlanContext() {
         (g.items || []).map(it => ({ z: it.z, n: it.n, d: it.d, m: it.m, note: it.note || '' }))
       ), [])
     };
+    // Sessie-note (coachnotitie op sessie-niveau) meesturen als aanwezig.
+    if (s.note && String(s.note).trim()) obj.note = String(s.note).trim();
+    sessions[id] = obj;
   });
   const dagNamen = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'];
   const schema = {};
@@ -3887,9 +4020,16 @@ function buildPlanContext() {
     if (!wk) return;
     const dagen = {};
     wk.days.forEach((d, i) => { dagen[dagNamen[i]] = d.sessions; });
-    schema[meta.id] = { label: meta.label, start: meta.start, dagen: dagen };
+    const entry = { label: meta.label, start: meta.start, dagen: dagen };
+    if (meta.focus) entry.focus = meta.focus;
+    schema[meta.id] = entry;
   });
-  return { sessions: sessions, schema: schema };
+  // Events (races/doelen) inclusief optioneel `goal`-veld — dit is leidend
+  // voor de coach voor streeftijden en race-strategie.
+  const events = getEvents().map(e => Object.assign({}, e));
+  // Profiel — vrije markdown, leidend voor achtergrond/blessures/streefdoelen.
+  const profile = (activePlan && typeof activePlan.profile === 'string') ? activePlan.profile : '';
+  return { sessions: sessions, schema: schema, events: events, profile: profile };
 }
 
 // Maakt sessie-items robuust voor zowel korte (z/n/d/m) als lange
@@ -3969,18 +4109,18 @@ function buildCoachSystemPrompt() {
 
   const staticBlock = `Je bent een persoonlijke triathlon/duursport-coach voor Ryan Douglas.
 
-Doel-races 2026:
-- 70.3 Luxemburg — 11 juli (A-race)
-- IJsselmeer zwemtocht — 30 augustus
-- Zwarte Plasje (zwemmarathon) — 13 september
-- Marathon Amsterdam — 1 november
+ATLEETPROFIEL (leidend voor doelen, achtergrond, streeftijden en beperkingen — gebruik ALTIJD als context):
+${plan.profile || '(nog geen profiel ingesteld)'}
 
-Je hebt toegang tot zijn VOLLEDIGE trainingsplan (sessiebibliotheek + weekschema) én zijn werkelijke voortgang.
+DOEL-EVENTS uit het plan (leidend voor race-strategie en streeftijden — sortering op datum):
+${JSON.stringify(plan.events)}
 
-SESSIE-BIBLIOTHEEK — sessionId → { type, label, dur(=geplande duur), title, steps[ {zone, naam, duur, doel, note} ] }. "doel" bevat pace/HR/vermogen/cadans-targets:
+Je hebt toegang tot zijn VOLLEDIGE trainingsplan (sessiebibliotheek + weekschema) én zijn werkelijke voortgang. Waar het profiel of events een streeftijd/doel noemen, is DAT leidend boven een generiek advies.
+
+SESSIE-BIBLIOTHEEK — sessionId → { type, label, dur(=geplande duur), title, note?(coachnotitie), steps[ {zone, naam, duur, doel, note} ] }. "doel" bevat pace/HR/vermogen/cadans-targets. Sessie-note is een coach-instructie op sessie-niveau (bv. focus voor de dag, restrictie, alternatief):
 ${JSON.stringify(plan.sessions)}
 
-WEEKSCHEMA — weekId → { label, start(=maandag), dagen{ ma..zo → [sessionId's] } }. Dit is het ORIGINELE plan vóór verplaatsingen/vervangingen:
+WEEKSCHEMA — weekId → { label, start(=maandag), focus?(weekthema), dagen{ ma..zo → [sessionId's] } }. Dit is het ORIGINELE plan vóór verplaatsingen/vervangingen:
 ${JSON.stringify(plan.schema)}
 
 DATAVELDEN in zijn voortgang (JSON):
@@ -4278,6 +4418,43 @@ function resetCoachConfig() {
   initCoachPage();
 }
 
+// ATLEETPROFIEL — bewerken via aparte modal; save gaat via hetzelfde pad
+// als savePlanFromEditor (PATCH trainingPlan.json in de Gist).
+function openAthleteProfile() {
+  const text = (activePlan && typeof activePlan.profile === 'string') ? activePlan.profile : '';
+  document.getElementById('athleteProfileText').value = text;
+  document.getElementById('athleteProfileMsg').textContent = '';
+  document.getElementById('athleteProfileModal').classList.add('active');
+}
+function closeAthleteProfile() { document.getElementById('athleteProfileModal').classList.remove('active'); }
+function onAthleteProfileBgClick(e) { if (e.target.id === 'athleteProfileModal') closeAthleteProfile(); }
+
+async function saveAthleteProfile() {
+  const cfg = getSyncConfig();
+  const msg = document.getElementById('athleteProfileMsg');
+  if (!cfg || !cfg.token || !cfg.gistId) {
+    msg.textContent = '❌ Stel eerst sync in (☁︎) om op te slaan.'; msg.style.color = '#d32f2f';
+    return;
+  }
+  if (!activePlan) { msg.textContent = '❌ Plan nog niet geladen.'; msg.style.color = '#d32f2f'; return; }
+  const newProfile = document.getElementById('athleteProfileText').value;
+  msg.textContent = 'Opslaan…'; msg.style.color = '#888';
+  try {
+    // Muteer een kopie van activePlan met de nieuwe profile-tekst en push
+    // 'em via serializePlan naar de Gist. Bump version.
+    const draft = Object.assign({}, activePlan, { profile: newProfile });
+    draft.version = Math.max(draft.version || 0, (activePlan && activePlan.version) || 0) + 1;
+    const blob = serializePlan(draft, 'user-edited', planContentHash(DEFAULT_PLAN));
+    await gistUpdateFile(cfg.gistId, cfg.token, PLAN_FILE, blob);
+    applyPlan(blob);
+    rerenderAfterPlan();
+    msg.textContent = '✅ Profiel opgeslagen (v' + draft.version + ').'; msg.style.color = '#0F6E56';
+    setTimeout(closeAthleteProfile, 900);
+  } catch (e) {
+    msg.textContent = '❌ Opslaan mislukt: ' + (e.message || e); msg.style.color = '#d32f2f';
+  }
+}
+
 async function clearCoachChat() {
   if (!confirm('Hele gespreksgeschiedenis verwijderen?')) return;
   state.chatMessages = [];
@@ -4439,9 +4616,13 @@ function renderWeek(key) {
   activeWeek = key;
 
   // Week info bar
+  const focusHtml = meta.focus
+    ? `<div class="week-info-focus" style="font-size:12px;color:#666;margin-top:2px;font-style:italic">🎯 ${escapeHtml(meta.focus)}</div>`
+    : '';
   document.getElementById('weekInfo').innerHTML = `
     <div>
-      <div class="week-info-title">${meta.label}</div>
+      <div class="week-info-title">${escapeHtml(meta.label)}</div>
+      ${focusHtml}
     </div>
   `;
 
@@ -4469,6 +4650,7 @@ function renderWeek(key) {
       if(!sess) return '';
       const isMoving = moveMode && moveMode.sid === sid && moveMode.fromDay === di;
       const hasFb = !!(state.feedback[activeWeek + ':' + di + ':' + sid] && state.feedback[activeWeek + ':' + di + ':' + sid].text);
+      const hasNote = !!(sess.note && String(sess.note).trim());
       const displayDur = getDisplayDur(activeWeek, di, sid);
       return `<div class="session-pill p-${sess.type}${isMoving?' moving':''}"
         draggable="true"
@@ -4478,6 +4660,7 @@ function renderWeek(key) {
         ondragstart="onDragStart(event,'${sid}',${di})"
       >
         ${hasFb ? '<span class="pill-fb" title="Heeft feedback">📝</span>' : ''}
+        ${hasNote ? '<span class="pill-fb" title="Heeft coachnotitie" style="right:20px">ℹ</span>' : ''}
         <div class="pill-name">${sess.label}</div>
         <div class="pill-meta">${displayDur}</div>
         <button class="pill-delete" onclick="event.stopPropagation(); deleteSessionFromDay('${sid}',${di})" title="Verwijder sessie van deze dag">×</button>
@@ -4861,6 +5044,15 @@ function buildSessionDetailHTML(weekId, di, sid) {
   const isDone = day.done.includes(sid);
   const isMissed = state.missed[weekId + ':' + di + ':' + sid] === true;
 
+  // Coachnotitie op session-niveau: apart blok bóven de stappen zodat 't
+  // meteen zichtbaar is (bv. focus voor de dag, vervangings-info).
+  const noteHtml = (sess.note && String(sess.note).trim())
+    ? '<div style="margin:10px 0;padding:10px 12px;background:#FFF8E1;border-left:4px solid #EF9F27;border-radius:0 6px 6px 0;font-size:13px;line-height:1.5;white-space:pre-wrap">' +
+        '<div style="font-weight:bold;color:#854F0B;margin-bottom:4px;font-size:11px;text-transform:uppercase;letter-spacing:.05em">ℹ Coachnotitie</div>' +
+        escapeHtml(String(sess.note).trim()) +
+      '</div>'
+    : '';
+
   const stepsHtml = sess.steps.map(group => {
     const itemsHtml = group.items.map(raw => {
       // Defensieve fallback: zowel korte (z/n/d/m) als lange
@@ -4946,6 +5138,7 @@ function buildSessionDetailHTML(weekId, di, sid) {
     <div class="detail-title">${titleHtml}</div>
     <div class="detail-sub">${day.name} ${day.date} · ${displayDur}${displayDur !== sess.dur ? ' <span style="color:#7F77DD;font-size:11px">(werkelijk · plan: ' + sess.dur + ')</span>' : ''}</div>
     ${sourceHtml}
+    ${noteHtml}
     ${metricsHtml}
     ${fbHtml}
     ${stepsHtml}
@@ -5275,6 +5468,14 @@ function sessToWorkoutSteps(sess) {
     const nameLower = (item.n || '').toLowerCase();
     const durStr = item.d || '';
     const metricStr = item.m || '';
+
+    // Skip notitie-items in de Garmin export:
+    //  - naam is exact 'ℹ️ Coachnotitie' (of ℹ) — pure informatie, geen stap
+    //  - zowel duur (d) als doel (m) leeg — geen bruikbare workout-step
+    const trimmedName = (item.n || '').trim();
+    const isCoachNote = trimmedName === 'ℹ️ Coachnotitie' || trimmedName === 'ℹ Coachnotitie';
+    const emptyStep = !durStr.trim() && !metricStr.trim();
+    if (isCoachNote || emptyStep) return;
 
     // Bepaal het soort step
     let kind = 'steady';
@@ -7278,6 +7479,7 @@ function init() {
   try { renderToday(); } catch(e) { console.warn('renderToday:', e); }
   try { renderStatus(); } catch(e) { console.warn('renderStatus:', e); }
   try { renderSeason(); } catch(e) { console.warn('renderSeason:', e); }
+  try { renderSeasonHeader(); } catch(e) { console.warn('renderSeasonHeader:', e); }
   try { updateNextRaceSub(); } catch(e) { console.warn('updateNextRaceSub:', e); }
   try { fixVersionFooter(); } catch(e) {}
   try { startUpdateChecker(); } catch(e) {}
@@ -7296,7 +7498,7 @@ function init() {
     loadPlanFromCloud()
       .then(function() { return loadState(); })
       .then(function() {
-        try { renderWeek(activeWeek); renderToday(); renderStatus(); renderSeason(); } catch(e) { console.warn('post-load render:', e); }
+        try { renderWeek(activeWeek); renderToday(); renderStatus(); renderSeason(); renderSeasonHeader(); updateNextRaceSub(); } catch(e) { console.warn('post-load render:', e); }
       })
       .catch(function(e) { console.warn('bg load:', e); });
   }, 100);
