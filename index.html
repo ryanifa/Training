@@ -524,6 +524,8 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; font-si
 
 <!-- KRACHT -->
 <div id="kracht" class="page">
+  <!-- Session-log-modus: verschijnt alleen als openStrengthLogForSession is aangeroepen -->
+  <div id="strSessionLogCard" style="display:none"></div>
   <div class="str-card">
     <div class="str-card-title">💪 Nieuwe sessie loggen</div>
     <div class="str-form-row">
@@ -2100,10 +2102,39 @@ function getWeekView(weekId) {
 
   // Pas done-markeringen toe per dag
   w.days.forEach((day, di) => {
-    day.done = day.sessions.filter(sid => state.done[weekId + ':' + di + ':' + sid] === true);
+    day.done = day.sessions.filter(sid => isSessionDone(weekId, di, sid));
   });
 
   return w;
+}
+
+// ============================================================
+// DONE-HELPERS — combineer state.done met geïmporteerde Garmin-activiteiten
+// zodat een sessie zowel handmatig als door een import als "gedaan" telt.
+// ============================================================
+// Retourneert de ISO-datum voor (weekId, dayIndex). Cache-vrij; simpel.
+function _isoForKey(weekId, di) {
+  try { return isoForWeekDay(weekId, di); }
+  catch (_) { return null; }
+}
+
+// Bestaat er voor deze sessie op deze dag een geïmporteerde activiteit met
+// passende sport (sess.type)? Gebruikt state.activities (v106+ import-doel).
+function hasMatchingImport(weekId, di, sid) {
+  const sess = SESSIONS[sid];
+  if (!sess) return false;
+  const iso = _isoForKey(weekId, di);
+  if (!iso) return false;
+  const acts = Array.isArray(state.activities) ? state.activities : [];
+  return acts.some(a => a && a.date === iso && a && a.sport === sess.type);
+}
+
+// Effectieve done-status voor rendering: state.done wint (handmatig), anders
+// telt een matching import ook mee (auto).
+function isSessionDone(weekId, di, sid) {
+  const key = weekId + ':' + di + ':' + sid;
+  if (state.done && state.done[key] === true) return true;
+  return hasMatchingImport(weekId, di, sid);
 }
 
 // ============================================================
@@ -3409,7 +3440,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 119;
+const APP_VERSION = 120;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
@@ -3529,6 +3560,83 @@ function updateNextRaceSub() {
 // ============================================================
 // KRACHT (strength training log)
 // ============================================================
+// ============================================================
+// STRENGTH-LOG HELPERS — koppeling plan-sessie ↔ Kracht-logboek
+// ============================================================
+// Parseert de d-string uit een strength-item ('3×12 p/been', '2×30 sec p/zijde',
+// '5×5', '3x10') naar { sets, reps }. Niet-parsebaar → { sets: 1, reps: '' }.
+function parseStrengthDur(d) {
+  const s = String(d || '').trim();
+  if (!s) return { sets: 1, reps: '' };
+  const m = s.match(/^\s*(\d+)\s*[×x*]\s*(\d+)\s*(.*)$/i);
+  if (m) {
+    const reps = parseInt(m[2], 10);
+    const rest = (m[3] || '').trim().toLowerCase();
+    // "2×30 sec" — reps is duur, niet echte reps; laat leeg zodat user zelf kiest
+    if (/^(sec|s|min|m)\b/.test(rest)) {
+      return { sets: parseInt(m[1], 10), reps: '' };
+    }
+    return { sets: parseInt(m[1], 10), reps: reps };
+  }
+  const m2 = s.match(/^\s*(\d+)\s*[×x]\s/i);
+  if (m2) return { sets: parseInt(m2[1], 10), reps: '' };
+  return { sets: 1, reps: '' };
+}
+
+// Retourneert het laatst-gebruikte gewicht voor een oefening (case-insensitive).
+// Kijkt in state.strength, sorteert op date DESC en pakt het laatste niet-lege
+// weight uit de meest recente sessie.
+function lastWeightForExercise(name) {
+  const q = String(name || '').toLowerCase().trim();
+  if (!q) return '';
+  const matches = (state.strength || [])
+    .filter(e => (e.exercise || '').toLowerCase().trim() === q)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  if (!matches.length) return '';
+  const sets = matches[0].sets || [];
+  for (let i = sets.length - 1; i >= 0; i--) {
+    if (sets[i] && sets[i].weight != null && sets[i].weight !== '') return sets[i].weight;
+  }
+  return '';
+}
+
+// Retourneert de laatste N (default 5) strength-entries voor een oefening.
+function progressionForExercise(name, limit) {
+  const q = String(name || '').toLowerCase().trim();
+  const n = typeof limit === 'number' ? limit : 5;
+  if (!q) return [];
+  return (state.strength || [])
+    .filter(e => (e.exercise || '').toLowerCase().trim() === q)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+    .slice(0, n);
+}
+
+// Alle strength-entries die aan een specifieke plan-sessie hangen (via weekKey).
+function strengthEntriesForSession(weekId, di, sid) {
+  const key = weekId + ':' + di + ':' + sid;
+  return (state.strength || []).filter(e => e && e.weekKey === key);
+}
+
+// Verzamelt alle unieke oefeningnamen die in ALLE str-sessies van het plan
+// voorkomen maar niet in de STRENGTH_EXERCISES-hardcode staan. Wordt bij het
+// vullen van de dropdown toegevoegd zodat plan-oefeningen selecteerbaar zijn
+// zonder de hardcoded lijst te muteren.
+function planOnlyStrengthExercises() {
+  const known = new Set();
+  STRENGTH_EXERCISES.forEach(g => g.items.forEach(n => known.add(String(n).toLowerCase())));
+  const found = new Set();
+  Object.keys(SESSIONS).forEach(sid => {
+    const s = SESSIONS[sid];
+    if (!s || s.type !== 'str' || !Array.isArray(s.steps)) return;
+    s.steps.forEach(g => (g.items || []).forEach(it => {
+      const n = String(it.n || '').trim();
+      if (!n) return;
+      if (!known.has(n.toLowerCase())) found.add(n);
+    }));
+  });
+  return Array.from(found).sort((a, b) => a.localeCompare(b, 'nl'));
+}
+
 const STRENGTH_EXERCISES = [
   { group: 'Onderlichaam', items: ['Squat', 'Front squat', 'Goblet squat', 'Split squat', 'Bulgarian split squat', 'Lunge', 'Step-up', 'Deadlift', 'Romanian deadlift (RDL)', 'Single-leg deadlift', 'Hip thrust', 'Glute bridge', 'Calf raise', 'Leg press', 'Leg curl', 'Leg extension'] },
   { group: 'Bovenlichaam — trekken', items: ['Lat pulldown', 'Pull-up', 'Chin-up', 'Seated cable row', 'Barbell row', 'Single-arm DB row', 'Face pull', 'Reverse fly'] },
@@ -3539,9 +3647,12 @@ const STRENGTH_EXERCISES = [
 const STR_CUSTOM = '__custom__';
 
 let strSetsBuffer = []; // { reps, weight, rpe }
+let strengthLogContext = null; // { sid, di, weekId, date, exercises:[{name, sets:[{reps,weight,rpe}], note}] }
 
 function initStrengthPage() {
-  // Dropdown vullen (één keer per render om custom toevoegingen mee te nemen)
+  // Dropdown vullen (één keer per render om custom toevoegingen mee te nemen).
+  // Plan-only-oefeningen (uit str-sessies die niet in STRENGTH_EXERCISES staan)
+  // krijgen een eigen optgroup zonder de hardcoded lijst te muteren.
   const sel = document.getElementById('strExercise');
   if (sel.options.length <= 1) {
     STRENGTH_EXERCISES.forEach(grp => {
@@ -3554,6 +3665,17 @@ function initStrengthPage() {
       });
       sel.appendChild(og);
     });
+    const planExtras = planOnlyStrengthExercises();
+    if (planExtras.length) {
+      const og = document.createElement('optgroup');
+      og.label = 'Uit trainingsplan';
+      planExtras.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name; opt.textContent = name;
+        og.appendChild(opt);
+      });
+      sel.appendChild(og);
+    }
     const sep = document.createElement('option');
     sep.value = STR_CUSTOM; sep.textContent = 'Anders…';
     sel.appendChild(sep);
@@ -3568,6 +3690,7 @@ function initStrengthPage() {
     strSetsBuffer = [{ reps: '', weight: '', rpe: '' }];
   }
   renderStrSets();
+  renderStrSessionLog();
   renderStrengthLog();
   populateStrFilter();
 }
@@ -3718,6 +3841,208 @@ function populateStrFilter() {
   sel.value = current;
 }
 
+// ============================================================
+// STRENGTH SESSION-LOG (koppeling plan-sessie → Kracht-log-invoer)
+// ============================================================
+// Opent de Kracht-pagina met vooringevulde oefeningen uit een str-sessie.
+// Elke oefening krijgt eigen set-rijen (sets/reps geparsed uit d), het
+// laatst-gebruikte gewicht per oefening wordt voorgeïnvuld, plus per
+// oefening een notitieveld. Save schrijft één strength-entry per oefening
+// weg (via saveStrengthEntry-logica) EN zet state.done[key] = true.
+function openStrengthLogForSession(sid, di) {
+  const sess = SESSIONS[sid];
+  if (!sess || sess.type !== 'str') return;
+  const items = (sess.steps && sess.steps[0] && sess.steps[0].items) || [];
+  const iso = isoForWeekDay(activeWeek, di) || new Date().toISOString().slice(0, 10);
+  const exercises = items
+    .filter(it => {
+      // Skip pure notitie-/info-items (net als Garmin-export)
+      const n = String(it.n || '').trim();
+      const d = String(it.d || '').trim();
+      const m = String(it.m || '').trim();
+      if (n === 'ℹ️ Coachnotitie' || n === 'ℹ Coachnotitie') return false;
+      if (!d && !m) return false;
+      return true;
+    })
+    .map(it => {
+      const parsed = parseStrengthDur(it.d || '');
+      const lastW = lastWeightForExercise(it.n || '');
+      const sets = [];
+      for (let i = 0; i < parsed.sets; i++) {
+        sets.push({ reps: parsed.reps === '' ? '' : String(parsed.reps), weight: lastW !== '' ? String(lastW) : '', rpe: '' });
+      }
+      return {
+        name: String(it.n || '').trim(),
+        plannedDur: String(it.d || '').trim(),
+        plannedMetric: String(it.m || '').trim(),
+        plannedNote: String(it.note || '').trim(),
+        sets: sets,
+        note: ''
+      };
+    });
+  strengthLogContext = {
+    sid: sid,
+    di: di,
+    weekId: activeWeek,
+    date: iso,
+    exercises: exercises
+  };
+  // Naar Kracht-pagina navigeren
+  const krachtBtn = document.querySelector('.nav-btn[onclick*="\'kracht\'"]');
+  showPage('kracht', krachtBtn);
+  // Scroll naar bovenaan zodat de session-log-card zichtbaar is
+  try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(_) {}
+}
+
+function cancelStrengthLogSession() {
+  strengthLogContext = null;
+  renderStrSessionLog();
+}
+
+function renderStrSessionLog() {
+  const card = document.getElementById('strSessionLogCard');
+  if (!card) return;
+  if (!strengthLogContext) { card.style.display = 'none'; card.innerHTML = ''; return; }
+  const ctx = strengthLogContext;
+  const sess = SESSIONS[ctx.sid];
+  const label = sess ? sess.label : ctx.sid;
+  card.style.display = '';
+  let html = '<div class="str-card" style="border-left:4px solid #9C68C6">' +
+    '<div class="str-card-title" style="display:flex;justify-content:space-between;align-items:center">' +
+      '<span>🏋️ Log sessie: ' + escapeHtml(label) + '</span>' +
+      '<button class="str-btn" style="font-size:12px" onclick="cancelStrengthLogSession()">Annuleer</button>' +
+    '</div>' +
+    '<div class="modal-meta" style="margin-bottom:10px">Datum: ' + escapeHtml(formatDateNL(ctx.date)) + ' · ' + ctx.exercises.length + ' oefening(en). Sets/reps vooringevuld uit plan; laatste gewicht opgehaald uit je logboek.</div>';
+  if (ctx.exercises.length === 0) {
+    html += '<div class="modal-meta">Geen oefeningen met invulbare sets/reps in deze sessie.</div>';
+  } else {
+    ctx.exercises.forEach((ex, exIdx) => {
+      const progression = progressionForExercise(ex.name, 3);
+      const progHtml = progression.length
+        ? '<div class="modal-meta" style="margin-top:4px">Vorige: ' + progression.map(e => formatDateNL(e.date) + ' · ' + escapeHtml(formatSetsShort(e.sets))).join(' · ') + '</div>'
+        : '';
+      const planHint = (ex.plannedDur ? '<span style="color:#666">' + escapeHtml(ex.plannedDur) + '</span>' : '') +
+        (ex.plannedMetric ? ' <span style="color:#888">· ' + escapeHtml(ex.plannedMetric) + '</span>' : '');
+      html += '<div style="padding:10px 0;border-top:1px solid #f0f0f0">' +
+        '<div style="font-weight:bold;font-size:13px;margin-bottom:2px">' + escapeHtml(ex.name || '(oefening ' + (exIdx + 1) + ')') + '</div>' +
+        (planHint ? '<div style="font-size:11px;margin-bottom:4px">' + planHint + '</div>' : '') +
+        progHtml +
+        '<div id="strSessionSets_' + exIdx + '" style="margin-top:6px"></div>' +
+        '<div style="margin-top:4px;display:flex;gap:6px">' +
+          '<button type="button" class="str-btn" style="font-size:12px" onclick="addStrSessionSet(' + exIdx + ')">+ Set</button>' +
+          '<button type="button" class="str-btn" style="font-size:12px" onclick="repeatStrSessionSet(' + exIdx + ')" title="Herhaal laatste set">⤴ Herhaal</button>' +
+        '</div>' +
+        '<label style="display:block;font-size:12px;font-weight:bold;color:#555;margin:8px 0 4px">Notitie</label>' +
+        '<textarea onchange="updateStrSessionNote(' + exIdx + ',this.value)" placeholder="bv. voelde zwaar…" style="width:100%;min-height:38px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:12px">' + escapeHtml(ex.note) + '</textarea>' +
+      '</div>';
+    });
+    html += '<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">' +
+      '<button class="str-btn" onclick="cancelStrengthLogSession()">Annuleer</button>' +
+      '<button class="str-btn str-btn-primary" onclick="saveStrengthLogSession()">💾 Opslaan + markeer gedaan</button>' +
+    '</div>' +
+    '<div class="modal-meta" id="strSessionMsg" style="margin-top:6px;min-height:16px"></div>';
+  }
+  html += '</div>';
+  card.innerHTML = html;
+  // Render sets per oefening
+  ctx.exercises.forEach((_, exIdx) => renderStrSessionSets(exIdx));
+}
+
+function renderStrSessionSets(exIdx) {
+  const ctx = strengthLogContext;
+  if (!ctx || !ctx.exercises[exIdx]) return;
+  const c = document.getElementById('strSessionSets_' + exIdx);
+  if (!c) return;
+  const sets = ctx.exercises[exIdx].sets;
+  c.innerHTML = sets.map((s, i) =>
+    '<div class="str-set-row">' +
+      '<span class="set-idx">' + (i + 1) + '.</span>' +
+      '<input type="number" inputmode="numeric" placeholder="reps" value="' + escapeAttr(s.reps) + '" onchange="updateStrSessionSet(' + exIdx + ',' + i + ',\'reps\',this.value)">' +
+      '<span class="set-x">×</span>' +
+      '<input type="number" inputmode="decimal" step="0.5" placeholder="kg" value="' + escapeAttr(s.weight) + '" onchange="updateStrSessionSet(' + exIdx + ',' + i + ',\'weight\',this.value)">' +
+      '<span class="set-x">kg</span>' +
+      '<input type="number" inputmode="decimal" step="0.5" min="1" max="10" placeholder="RPE" value="' + escapeAttr(s.rpe) + '" onchange="updateStrSessionSet(' + exIdx + ',' + i + ',\'rpe\',this.value)" style="width:54px">' +
+      '<button type="button" class="set-rm" onclick="removeStrSessionSet(' + exIdx + ',' + i + ')" title="Verwijder set">×</button>' +
+    '</div>'
+  ).join('');
+}
+
+function updateStrSessionSet(exIdx, i, field, val) {
+  const ex = strengthLogContext && strengthLogContext.exercises[exIdx];
+  if (!ex || !ex.sets[i]) return;
+  ex.sets[i][field] = val;
+}
+function updateStrSessionNote(exIdx, val) {
+  const ex = strengthLogContext && strengthLogContext.exercises[exIdx];
+  if (!ex) return;
+  ex.note = val;
+}
+function addStrSessionSet(exIdx) {
+  const ex = strengthLogContext && strengthLogContext.exercises[exIdx];
+  if (!ex) return;
+  const last = ex.sets[ex.sets.length - 1] || {};
+  ex.sets.push({ reps: last.reps || '', weight: last.weight || '', rpe: '' });
+  renderStrSessionSets(exIdx);
+}
+function repeatStrSessionSet(exIdx) {
+  const ex = strengthLogContext && strengthLogContext.exercises[exIdx];
+  if (!ex) return;
+  if (ex.sets.length === 0) ex.sets.push({ reps: '', weight: '', rpe: '' });
+  const last = ex.sets[ex.sets.length - 1];
+  ex.sets.push({ reps: last.reps, weight: last.weight, rpe: last.rpe });
+  renderStrSessionSets(exIdx);
+}
+function removeStrSessionSet(exIdx, i) {
+  const ex = strengthLogContext && strengthLogContext.exercises[exIdx];
+  if (!ex) return;
+  ex.sets.splice(i, 1);
+  if (ex.sets.length === 0) ex.sets.push({ reps: '', weight: '', rpe: '' });
+  renderStrSessionSets(exIdx);
+}
+
+async function saveStrengthLogSession() {
+  const ctx = strengthLogContext;
+  if (!ctx) return;
+  const msg = document.getElementById('strSessionMsg');
+  const setMsg = (t, err) => { if (msg) { msg.textContent = t; msg.style.color = err ? '#d32f2f' : '#0F6E56'; } };
+  state.strength = state.strength || [];
+  let added = 0;
+  const weekKey = ctx.weekId + ':' + ctx.di + ':' + ctx.sid;
+  ctx.exercises.forEach(ex => {
+    const sets = ex.sets
+      .map(s => ({
+        reps: s.reps !== '' ? Number(s.reps) : null,
+        weight: s.weight !== '' ? Number(s.weight) : null,
+        rpe: s.rpe !== '' ? Number(s.rpe) : null
+      }))
+      .filter(s => s.reps !== null || s.weight !== null);
+    if (sets.length === 0) return;
+    state.strength.push({
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+      date: ctx.date,
+      exercise: ex.name || '(onbekend)',
+      sets: sets,
+      note: ex.note || '',
+      weekKey: weekKey,
+      sid: ctx.sid
+    });
+    added++;
+  });
+  if (added === 0) { setMsg('Vul voor minstens één oefening reps of gewicht in.', true); return; }
+  // Handmatig gedaan markeren zodat de plan-sessie ook zichtbaar als done telt
+  state.done = state.done || {};
+  state.done[weekKey] = true;
+  await saveState();
+  setMsg('✅ ' + added + ' oefening(en) gelogd en sessie gemarkeerd als gedaan.', false);
+  strengthLogContext = null;
+  renderStrSessionLog();
+  renderStrengthLog();
+  populateStrFilter();
+  try { renderWeek(activeWeek); } catch(_) {}
+  try { renderToday(); } catch(_) {}
+  try { renderStatus(); } catch(_) {}
+}
+
 function renderStrengthLog() {
   const el = document.getElementById('strLog');
   if (!el) return;
@@ -3735,7 +4060,14 @@ function renderStrengthLog() {
     return;
   }
 
-  el.innerHTML = entries.map(e => `
+  el.innerHTML = entries.map(e => {
+    // Mini progressie: laatste 5 sessies van dezelfde oefening (excl. deze)
+    const prog = progressionForExercise(e.exercise, 6).filter(p => p.id !== e.id).slice(0, 5);
+    const progHtml = prog.length
+      ? '<div class="modal-meta" style="margin-top:4px;font-size:11px;color:#888">📈 Laatste ' + prog.length + ': ' +
+          prog.map(p => formatDateNL(p.date) + ' ' + escapeHtml(formatSetsShort(p.sets))).join(' · ') + '</div>'
+      : '';
+    return `
     <div class="str-entry">
       <div class="str-entry-head">
         <div>
@@ -3748,8 +4080,9 @@ function renderStrengthLog() {
       </div>
       <div class="str-entry-sets">${escapeHtml(formatSetsShort(e.sets))}</div>
       ${e.note ? `<div class="str-entry-note">${escapeHtml(e.note)}</div>` : ''}
+      ${progHtml}
     </div>
-  `).join('');
+  `;}).join('');
 }
 
 async function deleteStrengthEntry(id) {
@@ -4651,14 +4984,16 @@ function renderWeek(key) {
       const isMoving = moveMode && moveMode.sid === sid && moveMode.fromDay === di;
       const hasFb = !!(state.feedback[activeWeek + ':' + di + ':' + sid] && state.feedback[activeWeek + ':' + di + ':' + sid].text);
       const hasNote = !!(sess.note && String(sess.note).trim());
+      const isDone = isSessionDone(activeWeek, di, sid);
       const displayDur = getDisplayDur(activeWeek, di, sid);
-      return `<div class="session-pill p-${sess.type}${isMoving?' moving':''}"
+      return `<div class="session-pill p-${sess.type}${isDone ? ' done' : ''}${isMoving?' moving':''}"
         draggable="true"
         data-sid="${sid}"
         data-day="${di}"
         onclick="selectSess('${sid}',${di})"
         ondragstart="onDragStart(event,'${sid}',${di})"
       >
+        ${isDone ? '<span class="pill-done" title="Gedaan">✅</span>' : ''}
         ${hasFb ? '<span class="pill-fb" title="Heeft feedback">📝</span>' : ''}
         ${hasNote ? '<span class="pill-fb" title="Heeft coachnotitie" style="right:20px">ℹ</span>' : ''}
         <div class="pill-name">${sess.label}</div>
@@ -5134,6 +5469,32 @@ function buildSessionDetailHTML(weekId, di, sid) {
     ? `<a href="${escapeAttr(videoUrl)}" target="_blank" rel="noopener" style="color:#185FA5;text-decoration:none">${escapeHtml(sess.title)} <span style="font-size:12px">↗</span></a>`
     : escapeHtml(sess.title);
 
+  // Handmatig gedaan-knop: alleen tonen als er GEEN import op deze dag+sport
+  // is (dan is auto-done al actief). state.done blijft de bron van waarheid
+  // voor handmatig toggelen.
+  const hasImport = hasMatchingImport(weekId, di, sid);
+  const manualDoneKey = weekId + ':' + di + ':' + sid;
+  const isManuallyDone = state.done && state.done[manualDoneKey] === true;
+  const doneBtn = !hasImport
+    ? `<button class="mark-done-btn" onclick="toggleDone('${sid}',${di})" style="background:${isManuallyDone ? '#f5fdf6' : '#EEFBF3'};border-color:#2e7d32;color:#0F6E56">${isManuallyDone ? '↩ Ongedaan' : '✔ Gedaan'}</button>`
+    : `<div class="modal-meta" style="margin:6px 0;color:#0F6E56">✅ Automatisch gedaan op basis van Garmin-import.</div>`;
+
+  // Krachtsessie: knop om via de Kracht-pagina te loggen met vooringevulde
+  // oefeningen. Toon ook een samenvatting van al gelogde entries voor deze
+  // sessie (via strengthEntriesForSession).
+  let strengthBtn = '';
+  let strengthSummary = '';
+  if (sess.type === 'str') {
+    strengthBtn = `<button class="mark-done-btn" onclick="openStrengthLogForSession('${sid}',${di})" style="background:#F5F0FF;border-color:#9C68C6;color:#5D3B8E">🏋️ Log deze sessie</button>`;
+    const logged = strengthEntriesForSession(weekId, di, sid);
+    if (logged.length) {
+      strengthSummary = '<div style="margin:10px 0;padding:10px 12px;background:#F5F0FF;border-left:4px solid #9C68C6;border-radius:0 6px 6px 0;font-size:13px">' +
+        '<div style="font-weight:bold;color:#5D3B8E;margin-bottom:4px;font-size:11px;text-transform:uppercase;letter-spacing:.05em">🏋️ Gelogde sessie</div>' +
+        logged.map(e => escapeHtml(e.exercise) + ' — ' + escapeHtml(formatSetsShort(e.sets))).join('<br>') +
+        '</div>';
+    }
+  }
+
   return `
     <div class="detail-title">${titleHtml}</div>
     <div class="detail-sub">${day.name} ${day.date} · ${displayDur}${displayDur !== sess.dur ? ' <span style="color:#7F77DD;font-size:11px">(werkelijk · plan: ' + sess.dur + ')</span>' : ''}</div>
@@ -5141,7 +5502,10 @@ function buildSessionDetailHTML(weekId, di, sid) {
     ${noteHtml}
     ${metricsHtml}
     ${fbHtml}
+    ${strengthSummary}
     ${stepsHtml}
+    ${doneBtn}
+    ${strengthBtn}
     <button class="move-btn" onclick="startMove('${sid}',${di})">
       📌 Verplaats naar andere dag
     </button>
@@ -7026,6 +7390,23 @@ async function processFitImport() {
       state.activities[existing] = activity;
     } else {
       state.activities.push(activity);
+    }
+    // Auto-done: str-import (Garmin strength_training → sport 'str') markeert
+    // de geplande str-sessie op dezelfde dag als gedaan in state.done.
+    // De import zelf blijft naast het plankaartje staan als gekleurd blok.
+    if (activity.sport === 'str' || activity.sport === 'strength' || activity.sport === 'kracht') {
+      const wd = findWeekAndDay(activity.date);
+      if (wd) {
+        const view = getWeekView(wd.weekId);
+        const dayPlanned = view && view.days[wd.dayIndex] ? view.days[wd.dayIndex].sessions : [];
+        dayPlanned.forEach(sid => {
+          const s = SESSIONS[sid];
+          if (s && s.type === 'str') {
+            state.done = state.done || {};
+            state.done[wd.weekId + ':' + wd.dayIndex + ':' + sid] = true;
+          }
+        });
+      }
     }
     added++;
     if (!firstWeekId) {
