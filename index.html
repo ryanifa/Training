@@ -2148,6 +2148,29 @@ let cloudPushTimer = null;
 let lastSyncAt = null;
 let isSyncing = false;
 
+// Records (10s-samples met lat/lon) zijn verreweg het grootste veld in de
+// state en duwden de Gist over GitHub's 1MB-truncation. Bewaar ze alleen
+// voor recente activiteiten (≤ RECORDS_KEEP_DAYS) of voor activiteiten
+// waarvoor een handmatige swimrun-selectie is gemaakt (die moet je kunnen
+// blijven bijstellen). Oudere activiteiten houden metrics + eventuele
+// swimrunAnalysis-samenvatting. Pure functie: muteert de input niet.
+const RECORDS_KEEP_DAYS = 14;
+function pruneActivityRecords(activities) {
+  if (!Array.isArray(activities)) return activities;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - RECORDS_KEEP_DAYS);
+  const cutoffIso = formatIso(cutoff);
+  return activities.map(a => {
+    if (!a || !Array.isArray(a.records)) return a;
+    const recent = !!(a.date && a.date >= cutoffIso);
+    const pinned = Array.isArray(a.manualSwimSegments) && a.manualSwimSegments.length > 0;
+    if (recent || pinned) return a;
+    const copy = Object.assign({}, a);
+    delete copy.records;
+    return copy;
+  });
+}
+
 function buildStateBlob() {
   return {
     _meta: { updatedAt: new Date().toISOString() },
@@ -2161,7 +2184,7 @@ function buildStateBlob() {
     strength: state.strength,
     chatMessages: state.chatMessages,
     importedFits: state.importedFits,
-    activities: state.activities,
+    activities: pruneActivityRecords(state.activities),
     garminReadiness: state.garminReadiness,
     garminReadinessHistory: state.garminReadinessHistory
   };
@@ -2179,7 +2202,7 @@ function applyStateBlob(saved) {
   if (Array.isArray(saved.strength)) state.strength = saved.strength;
   if (Array.isArray(saved.chatMessages)) state.chatMessages = saved.chatMessages;
   if (Array.isArray(saved.importedFits)) state.importedFits = saved.importedFits;
-  if (Array.isArray(saved.activities)) state.activities = saved.activities;
+  if (Array.isArray(saved.activities)) state.activities = pruneActivityRecords(saved.activities);
   if (saved.garminReadiness && typeof saved.garminReadiness === 'object') state.garminReadiness = saved.garminReadiness;
   if (Array.isArray(saved.garminReadinessHistory)) state.garminReadinessHistory = saved.garminReadinessHistory;
 
@@ -2285,7 +2308,11 @@ async function gistFetch(gistId, token) {
   // of (nog erger) een geldig-geparste subset gebruiken en imports verliezen.
   let content = file.content;
   if (file.truncated && file.raw_url) {
-    const rawResp = await fetch(file.raw_url, { headers: { 'Authorization': 'Bearer ' + token } });
+    // GEEN Authorization-header: gist.githubusercontent.com beantwoordt een
+    // CORS-preflight niet, dus een "simple request" zonder custom headers is
+    // de enige vorm die werkt vanuit de browser. De raw_url bevat zelf al de
+    // secret-hash, dus auth is niet nodig.
+    const rawResp = await fetch(file.raw_url);
     if (!rawResp.ok) throw new Error('Gist raw_url ophalen mislukt (HTTP ' + rawResp.status + ')');
     content = await rawResp.text();
   }
@@ -2622,7 +2649,9 @@ function mergeStateBlobs(remote, local) {
     strength:   _mergeStrength(r.strength, l.strength),
     chatMessages:            _mergeChatMessages(r.chatMessages, l.chatMessages),
     importedFits:            _mergeStringArrays(r.importedFits, l.importedFits),
-    activities:              _mergeActivities(r.activities, l.activities),
+    // Prune ná de merge: anders zou _mergeActivity records uit een oude
+    // (nog niet-geprunede) remote terugzetten en de Gist weer laten groeien.
+    activities:              pruneActivityRecords(_mergeActivities(r.activities, l.activities)),
     garminReadiness:         _pickByUpdatedAt(r.garminReadiness, l.garminReadiness),
     garminReadinessHistory:  _mergeReadinessHistory(r.garminReadinessHistory, l.garminReadinessHistory)
   };
@@ -3661,7 +3690,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 122;
+const APP_VERSION = 123;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
