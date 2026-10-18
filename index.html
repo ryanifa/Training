@@ -2278,8 +2278,19 @@ async function gistFetch(gistId, token) {
   if (!r.ok) throw new Error('Gist ophalen mislukt (HTTP ' + r.status + ')');
   const data = await r.json();
   const file = data.files && data.files[SYNC_FILE];
-  if (!file || typeof file.content !== 'string') throw new Error('Gist bevat geen ' + SYNC_FILE);
-  return JSON.parse(file.content);
+  if (!file) throw new Error('Gist bevat geen ' + SYNC_FILE);
+  // Belangrijk: boven ±1MB knipt GitHub `content` af — dan is file.truncated
+  // true en moeten we de raw_url volgen om de volledige inhoud te krijgen.
+  // Zonder deze check zouden we een onvolledige blob JSON.parse'en (crash)
+  // of (nog erger) een geldig-geparste subset gebruiken en imports verliezen.
+  let content = file.content;
+  if (file.truncated && file.raw_url) {
+    const rawResp = await fetch(file.raw_url, { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!rawResp.ok) throw new Error('Gist raw_url ophalen mislukt (HTTP ' + rawResp.status + ')');
+    content = await rawResp.text();
+  }
+  if (typeof content !== 'string') throw new Error('Gist bevat geen ' + SYNC_FILE);
+  return JSON.parse(content);
 }
 
 async function gistUpdate(gistId, token, blob) {
@@ -2623,8 +2634,20 @@ function mergeStateBlobs(remote, local) {
 async function pushMerged(cfg) {
   const local = buildStateBlob();
   let remote = null;
+  let remoteFetchFailed = false;
   try { remote = await gistFetch(cfg.gistId, cfg.token); }
-  catch (e) { console.warn('[sync] remote fetch mislukte, push zonder merge:', e && e.message); }
+  catch (e) {
+    remoteFetchFailed = true;
+    console.warn('[sync] remote fetch mislukte — push afgebroken om geen data te overschrijven:', e && e.message);
+  }
+
+  // KRITIEK: zonder succesvolle remote-fetch NIET pushen. Anders zou een
+  // (mogelijk oude of incomplete) lokale state de remote wholesale
+  // overschrijven en imports van andere clients/de agent wissen.
+  if (remoteFetchFailed) {
+    showSyncError('Remote-fetch mislukt — push uitgesteld om geen data te verliezen. Volgende save probeert opnieuw.');
+    return false;
+  }
 
   let toPush = local;
   let hadConflict = false;
@@ -3638,7 +3661,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 121;
+const APP_VERSION = 122;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
