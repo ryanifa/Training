@@ -2482,13 +2482,196 @@ async function loadPlanFromCloud() {
   }
 }
 
+// ============================================================
+// MERGE — vóór élke push eerst remote fetchen en samenvoegen.
+// Voorkomt last-writer-wins waarbij een client met oude state nieuwere
+// data van andere clients of de Garmin-agent zou wegschrijven.
+// ============================================================
+function _mergeStringArrays(a, b) {
+  const set = new Set();
+  (Array.isArray(a) ? a : []).forEach(x => { if (x != null) set.add(x); });
+  (Array.isArray(b) ? b : []).forEach(x => { if (x != null) set.add(x); });
+  return Array.from(set);
+}
+function _mergeBoolMaps(a, b) {
+  const out = {};
+  if (a && typeof a === 'object') Object.keys(a).forEach(k => { if (a[k] === true) out[k] = true; });
+  if (b && typeof b === 'object') Object.keys(b).forEach(k => { if (b[k] === true) out[k] = true; });
+  return out;
+}
+// Simpele map-merge; `localWins` bepaalt wie bij overlap wint (gebaseerd
+// op nieuwere _meta.updatedAt van de hele blob).
+function _mergeMaps(a, b, localWins) {
+  const out = {};
+  if (localWins) {
+    if (a && typeof a === 'object') Object.assign(out, a);
+    if (b && typeof b === 'object') Object.assign(out, b);
+  } else {
+    if (b && typeof b === 'object') Object.assign(out, b);
+    if (a && typeof a === 'object') Object.assign(out, a);
+  }
+  return out;
+}
+function _mergeByUpdatedAt(a, b) {
+  const out = {};
+  const cp = src => { if (!src || typeof src !== 'object') return; Object.keys(src).forEach(k => {
+    const inc = src[k];
+    const ex = out[k];
+    if (!ex) { out[k] = inc; return; }
+    const et = ex && ex.updatedAt;
+    const it = inc && inc.updatedAt;
+    if (it && (!et || it > et)) out[k] = inc;
+  }); };
+  cp(a); cp(b);
+  return out;
+}
+function _pickByUpdatedAt(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  const at = a.updatedAt, bt = b.updatedAt;
+  if (bt && (!at || bt > at)) return b;
+  return a;
+}
+// Merge activity-objecten met dezelfde id — behoud de meest-complete versie.
+function _mergeActivity(a, b) {
+  if (!a) return b; if (!b) return a;
+  const merged = Object.assign({}, a, b);
+  if (a.swimrunAnalysis && !b.swimrunAnalysis) merged.swimrunAnalysis = a.swimrunAnalysis;
+  if (Array.isArray(a.manualSwimSegments) && a.manualSwimSegments.length > 0
+      && (!Array.isArray(b.manualSwimSegments) || b.manualSwimSegments.length === 0)) {
+    merged.manualSwimSegments = a.manualSwimSegments;
+  }
+  if (!Array.isArray(b.records) && Array.isArray(a.records)) merged.records = a.records;
+  if (!merged.note && a.note) merged.note = a.note;
+  return merged;
+}
+function _mergeActivities(remoteArr, localArr) {
+  const r = Array.isArray(remoteArr) ? remoteArr : [];
+  const l = Array.isArray(localArr) ? localArr : [];
+  const map = new Map();
+  r.forEach(it => { if (it && it.id != null) map.set(it.id, it); });
+  l.forEach(it => {
+    if (!it || it.id == null) return;
+    const ex = map.get(it.id);
+    map.set(it.id, ex ? _mergeActivity(ex, it) : it);
+  });
+  return Array.from(map.values());
+}
+function _mergeStrength(remoteArr, localArr) {
+  const map = new Map();
+  (Array.isArray(remoteArr) ? remoteArr : []).forEach(e => { if (e && e.id != null) map.set(e.id, e); });
+  (Array.isArray(localArr)  ? localArr  : []).forEach(e => { if (e && e.id != null) map.set(e.id, e); });
+  return Array.from(map.values());
+}
+function _mergeChatMessages(a, b) {
+  const map = new Map();
+  const put = arr => (Array.isArray(arr) ? arr : []).forEach(m => {
+    if (!m) return;
+    const key = (m.ts || '') + '|' + (m.role || '') + '|' + String(m.content || '').slice(0, 60);
+    if (!map.has(key)) map.set(key, m);
+  });
+  put(a); put(b);
+  return Array.from(map.values()).sort((x, y) => (x.ts || '').localeCompare(y.ts || ''));
+}
+function _mergeReadinessHistory(a, b) {
+  const map = new Map();
+  const put = arr => (Array.isArray(arr) ? arr : []).forEach(e => {
+    if (!e || !e.date) return;
+    const key = e.date + '|' + (e.hour != null ? e.hour : (e.timeSlot || ''));
+    const ex = map.get(key);
+    if (!ex) { map.set(key, e); return; }
+    const et = ex.updatedAt, it = e.updatedAt;
+    if (it && (!et || it > et)) map.set(key, e);
+  });
+  put(a); put(b);
+  return Array.from(map.values()).sort((x, y) => {
+    if (x.date !== y.date) return x.date.localeCompare(y.date);
+    return (x.hour || 0) - (y.hour || 0);
+  });
+}
+
+// Merge een remote state-blob met de lokale (buildStateBlob) tot één blob
+// die veilig naar de Gist gepushed kan worden. _meta.updatedAt wordt in de
+// caller gezet.
+function mergeStateBlobs(remote, local) {
+  const r = remote || {};
+  const l = local || {};
+  const rTs = r._meta && r._meta.updatedAt;
+  const lTs = l._meta && l._meta.updatedAt;
+  const localIsNewer = !rTs || (lTs && lTs > rTs);
+  return {
+    _meta: Object.assign({}, r._meta || {}, l._meta || {}),
+    done:       _mergeBoolMaps(r.done,     l.done),
+    missed:     _mergeBoolMaps(r.missed,   l.missed),
+    moves:      _mergeMaps(r.moves,        l.moves,   localIsNewer),
+    skips:      _mergeBoolMaps(r.skips,    l.skips),
+    rest:       _mergeBoolMaps(r.rest,     l.rest),
+    feedback:   _mergeByUpdatedAt(r.feedback, l.feedback),
+    metrics:    _mergeMaps(r.metrics,      l.metrics, localIsNewer),
+    strength:   _mergeStrength(r.strength, l.strength),
+    chatMessages:            _mergeChatMessages(r.chatMessages, l.chatMessages),
+    importedFits:            _mergeStringArrays(r.importedFits, l.importedFits),
+    activities:              _mergeActivities(r.activities, l.activities),
+    garminReadiness:         _pickByUpdatedAt(r.garminReadiness, l.garminReadiness),
+    garminReadinessHistory:  _mergeReadinessHistory(r.garminReadinessHistory, l.garminReadinessHistory)
+  };
+}
+
+// Push-flow met merge: fetch remote → merge → push. Als remote nieuwere data
+// bevatte, wordt in-memory state ook bijgewerkt. Veiligheid: breek af als de
+// merge zou leiden tot MINDER activities dan remote al had.
+async function pushMerged(cfg) {
+  const local = buildStateBlob();
+  let remote = null;
+  try { remote = await gistFetch(cfg.gistId, cfg.token); }
+  catch (e) { console.warn('[sync] remote fetch mislukte, push zonder merge:', e && e.message); }
+
+  let toPush = local;
+  let hadConflict = false;
+
+  if (remote && typeof remote === 'object') {
+    toPush = mergeStateBlobs(remote, local);
+    const rActs = Array.isArray(remote.activities) ? remote.activities.length : 0;
+    const mActs = Array.isArray(toPush.activities) ? toPush.activities.length : 0;
+    if (mActs < rActs) {
+      console.warn('[sync] merge zou activities-count laten dalen (' + rActs + ' → ' + mActs + '). Afbreken; remote blijft staan.');
+      return false;
+    }
+    const rImports = Array.isArray(remote.importedFits) ? remote.importedFits.length : 0;
+    const mImports = Array.isArray(toPush.importedFits) ? toPush.importedFits.length : 0;
+    const localActs    = Array.isArray(local.activities)   ? local.activities.length   : 0;
+    const localImports = Array.isArray(local.importedFits) ? local.importedFits.length : 0;
+    if (rActs > localActs || rImports > localImports) {
+      hadConflict = true;
+      console.info('[sync] merge-conflict: remote had ' + rActs + ' activities / ' + rImports + ' imports; lokaal ' + localActs + ' / ' + localImports + ' → gemerged naar ' + mActs + ' / ' + mImports);
+    }
+    const rTs = remote._meta && remote._meta.updatedAt;
+    const lTs = local._meta && local._meta.updatedAt;
+    if (rTs && (!lTs || rTs > lTs)) {
+      try {
+        applyStateBlob(toPush);
+        writeLocalBlob(toPush);
+        try { renderWeek(activeWeek); } catch(_) {}
+        try { renderToday(); } catch(_) {}
+        try { renderStatus(); } catch(_) {}
+      } catch (e) { console.warn('[sync] in-memory refresh na merge:', e); }
+    }
+  }
+
+  toPush._meta = toPush._meta || {};
+  toPush._meta.updatedAt = new Date().toISOString();
+  await gistUpdate(cfg.gistId, cfg.token, toPush);
+  if (hadConflict) console.info('[sync] push geslaagd na merge-conflict.');
+  return true;
+}
+
 async function pushToCloud() {
   const cfg = getSyncConfig();
   if (!cfg || !cfg.token || !cfg.gistId) return;
   if (isSyncing) return;
   isSyncing = true; updateSyncBadge();
   try {
-    await gistUpdate(cfg.gistId, cfg.token, buildStateBlob());
+    await pushMerged(cfg);
     lastSyncAt = new Date();
     hideSyncError();
   } catch(e) {
@@ -2787,8 +2970,21 @@ async function pullFromCloud() {
       applyStateBlob(remote);
       writeLocalBlob(remote);
     } else if (lTs && (!rTs || lTs > rTs)) {
-      // Lokale data is nieuwer: push terug naar cloud
-      await gistUpdate(cfg.gistId, cfg.token, buildStateBlob());
+      // Lokale data is nieuwer: push terug naar cloud, maar WEL via merge
+      // zodat remote-only entries (bv. activities uit de agent) niet
+      // wegvallen. We hebben remote hierboven al gefetcht.
+      const merged = mergeStateBlobs(remote || {}, buildStateBlob());
+      const rActs = Array.isArray(remote && remote.activities) ? remote.activities.length : 0;
+      const mActs = Array.isArray(merged.activities) ? merged.activities.length : 0;
+      if (mActs < rActs) {
+        console.warn('[sync] pullFromCloud push: merge zou activities verlagen (' + rActs + ' → ' + mActs + '). Afgebroken.');
+      } else {
+        merged._meta = merged._meta || {};
+        merged._meta.updatedAt = new Date().toISOString();
+        await gistUpdate(cfg.gistId, cfg.token, merged);
+        applyStateBlob(merged);
+        writeLocalBlob(merged);
+      }
     }
     lastSyncAt = new Date();
     return true;
@@ -2832,7 +3028,9 @@ async function forcePushToCloud() {
   if (!cfg || !cfg.token || !cfg.gistId) return false;
   isSyncing = true; updateSyncBadge();
   try {
-    await gistUpdate(cfg.gistId, cfg.token, buildStateBlob());
+    // Ook geforceerde push gaat via merge zodat we nooit remote-only data
+    // (bv. activities van een ander device of de agent) overschrijven.
+    await pushMerged(cfg);
     lastSyncAt = new Date();
     return true;
   } catch(e) { console.warn('forcePush:', e); return false; }
@@ -3440,7 +3638,7 @@ function toggleNav() {
 // Versienummer: handmatig ophogen bij elke wijziging. De deploy-datum/tijd
 // komt automatisch uit document.lastModified (verandert bij elke deploy),
 // zodat meerdere deploys op één dag onderscheidbaar zijn.
-const APP_VERSION = 120;
+const APP_VERSION = 121;
 
 function fixVersionFooter() {
   const el = document.getElementById('appVersion');
